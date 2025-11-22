@@ -1,8 +1,18 @@
-# 構造力学解析アプリ
+# InstaStruct - 構造力学解析アプリ
 
-手書き構造図から自動で構造解析を行い、変形図と応力図を出力するStreamlitアプリケーションです。
+<p align="center">
+  <img src="assets/logo.png" alt="InstaStruct Logo" width="200"/>
+</p>
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-app-url.streamlit.app)
+<p align="center">
+  <strong>手書き構造図から自動で構造解析を行い、変形図と応力図を出力するStreamlitアプリケーションです。</strong>
+</p>
+
+<p align="center">
+  <a href="https://your-app-url.streamlit.app">
+    <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App"/>
+  </a>
+</p>
 
 ## 🎯 機能
 

@@ -11,7 +11,22 @@ from matplotlib.patches import Polygon as MplPolygon
 import fem_lib
 import draw_lib
 
-st.set_page_config(layout="wide", page_title="構造力学解析アプリ")
+st.set_page_config(
+    layout="wide", 
+    page_title="InstaStruct - 構造力学解析アプリ",
+    page_icon="🏗️",
+    menu_items={
+        'Get Help': 'https://github.com/Harukaoff/graduation',
+        'Report a bug': 'https://github.com/Harukaoff/graduation/issues',
+        'About': """
+        # InstaStruct
+        
+        手書き構造図から自動で構造解析を行うアプリです。
+        
+        **開発者**: 森本遥香 (DA22340)
+        """
+    }
+)
 
 # ==== 設定 ====
 # Streamlit Cloud対応: 相対パスを優先、次に絶対パス、最後に環境変数
@@ -228,12 +243,30 @@ def get_load_arrow_tip(pts, angle):
     
     return pts[idx]
 
-# タイトル
-st.title("🏗️ 構造力学解析アプリ")
-st.write("手書き構造図から自動で構造解析を行い、変形図と応力図を出力します")
+# タイトルとロゴ
+col_logo, col_title = st.columns([1, 4])
+
+with col_logo:
+    # ロゴを表示
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=120)
+    else:
+        st.write("🏗️")
+
+with col_title:
+    st.title("InstaStruct")
+    st.write("構造力学解析アプリ")
+    st.caption("手書き構造図から自動で構造解析を行い、変形図と応力図を出力します")
 
 # サイドバー設定
 with st.sidebar:
+    # サイドバーにもロゴを表示
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        st.image(logo_path, use_container_width=True)
+    st.markdown("---")
+    
     st.header("⚙️ 解析設定")
     conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
     y_align_th = st.slider("高さ揃え閾値(px)", 2.0, 100.0, 8.0, 1.0)

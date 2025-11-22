@@ -47,11 +47,12 @@ Thumbs.db
 *.xlsx
 *.xls
 
-# Image files (except templates)
+# Image files (except templates and assets)
 *.jpg
 *.jpeg
 *.png
 !templates/*.png
+!assets/*.png
 
 # Model files (if not using Git LFS)
 # models/*.pt
