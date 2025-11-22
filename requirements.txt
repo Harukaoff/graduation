@@ -1,7 +1,7 @@
-streamlit==1.50.0
-opencv-python-headless==4.7.0.72
-numpy==1.26.4
-pandas
-matplotlib
-ultralytics==8.3.220
-Pillow
+streamlit>=1.28.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+ultralytics>=8.0.0
+Pillow>=10.0.0

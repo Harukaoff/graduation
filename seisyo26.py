@@ -1,40 +1,22 @@
-# seisyo_final_fixed_v4_connected_fixed.py
-# 改良版：ピン/ローラーは回転無視、梁を支点で接続、荷重先端スナップ
+# seisyo_final_fixed_v5_nodes.py
 import os
 import math
+import json
+import io
 import cv2
 import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
-from typing import Any, Tuple, List
+from typing import Any, Tuple, List, Dict
 
-st.set_page_config(layout="wide", page_title="構造図 清書 + 接続 (fixed-v4-connected-fix)")
+st.set_page_config(layout="wide", page_title="構造図 清書 + 可視化 (fixed-v5 - nodes)")
 
 # ---------------------------
 # 設定
 # ---------------------------
 DEFAULT_MODEL_PATH = r"C:\Users\morim\Downloads\graduation\runs\obb\train31\weights\best.pt"
 TEMPLATE_DIR = "templates"
-
-# テンプレのデフォルト向き（テンプレ画像がどの方向を"tip"として持っているか）
-# 例: 'up' = テンプレの先端が画像上方向を向いている
-TEMPLATE_DEFAULT_TIP = {
-    "pin": "up",
-    "roller": "up",
-    "fixed": "right",   # 固定支点は「直線が右向き」を想定
-    "beam": "right",    # 梁テンプレは右向きに長辺が伸びる想定
-    "load": "right",    # 矢印テンプレは右向きが矢印先端
-    "momentl": "none",
-    "momentr": "none",
-    "udl": "right",
-    "hinge": "none",
-}
-
-# スナップ閾値（ピクセル） — 必要に応じて調整
-SNAP_DISTANCE_TO_BEAM = 100.0   # 支点候補が梁の近くとみなす距離
-SNAP_NEAR_ENDPOINT = 40.0       # 支点が端点に近いとき端点に吸着
-LOAD_SNAP_THRESHOLD = 100.0     # 荷重先端を梁先にスナップする閾値
 
 # ---------------------------
 # ユーティリティ: 安全に Tensor -> numpy
@@ -49,16 +31,7 @@ def to_numpy(x: Any):
             return x
 
 # ---------------------------
-# 角度ユーティリティ
-# ---------------------------
-def normalize_angle_deg(a: float) -> float:
-    a = float(a) % 360.0
-    if a > 180.0:
-        a -= 360.0
-    return a
-
-# ---------------------------
-# 頂点整列: CW + top-left start
+# 頂点の順序安定化（CW、開始点は top-left に）
 # ---------------------------
 def order_pts_clockwise_start(pts: np.ndarray, start_hint: str = "top-left") -> np.ndarray:
     pts = np.asarray(pts, dtype=float).reshape(-1,2)
@@ -69,6 +42,7 @@ def order_pts_clockwise_start(pts: np.ndarray, start_hint: str = "top-left") -> 
     angles = np.arctan2(pts[:,1] - cy, pts[:,0] - cx)
     order = np.argsort(-angles)  # CW
     pts_sorted = pts[order]
+    # choose start index
     if start_hint == "top-left":
         ys = pts_sorted[:,1]
         miny = ys.min()
@@ -84,7 +58,7 @@ def order_pts_clockwise_start(pts: np.ndarray, start_hint: str = "top-left") -> 
     return pts_final
 
 # ---------------------------
-# RGBA 読み込み・描画ユーティリティ
+# RGBA テンプレ読み込み
 # ---------------------------
 def load_template_rgba(path: str):
     if not os.path.exists(path):
@@ -98,6 +72,9 @@ def load_template_rgba(path: str):
         img = cv2.merge([b,g,r,a])
     return img
 
+# ---------------------------
+# 回転・スケール・合成
+# ---------------------------
 def rotate_image_keep_alpha(img: np.ndarray, angle_deg: float) -> np.ndarray:
     h,w = img.shape[:2]
     cx, cy = w/2.0, h/2.0
@@ -131,8 +108,6 @@ def overlay_rgba(base: np.ndarray, overlay: np.ndarray, center: Tuple[float,floa
     ox1, oy1 = X1 - x1, Y1 - y1
     ox2, oy2 = ox1 + (X2 - X1), oy1 + (Y2 - Y1)
     crop = overlay[oy1:oy2, ox1:ox2]
-    if crop.size == 0:
-        return base
     if crop.shape[2] < 4:
         base[Y1:Y2, X1:X2] = crop[..., :3]
         return base
@@ -176,28 +151,19 @@ def distance_point_to_segment(p, a, b):
     proj = a + t * ba
     return np.linalg.norm(p - proj)
 
-def project_point_on_segment(p, a, b):
-    pa = p - a; ba = b - a
-    denom = np.dot(ba, ba) + 1e-12
-    t = np.dot(pa, ba) / denom
-    t_clamped = max(0.0, min(1.0, t))
-    proj = a + t_clamped * ba
-    return proj, t_clamped
-
 # ---------------------------
 # 要素配置（テンプレ向き差分をここで吸収）
-# - pin/roller は角度を返すが、overlay 側で回転無視する（ユーザ指定）
-# - beam は endpoints a,b を result に格納
-# - load: tip を result に格納
 # ---------------------------
 def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
     pts = np.array(pts_raw, dtype=float)
+    # normalize pts order for stable behavior
     pts = order_pts_clockwise_start(pts, start_hint="top-left")
     edges = edge_list_from_pts(pts)
     short_idxs = short_edge_indices(edges)
     long_idxs = long_edge_indices(edges)
     center = pts.mean(axis=0)
 
+    # nearest beam
     nearest_beam = None
     min_d = 1e9
     for b in beam_lines:
@@ -216,7 +182,7 @@ def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
             v = np.array([1.0,0.0])
         angle_deg = math.degrees(math.atan2(v[1], v[0]))
         angle_deg = round(angle_deg / 15.0) * 15.0
-        # do NOT force +180 flip here; we'll define beam endpoints from node snapping
+        angle_deg = (angle_deg + 180) % 360
         long_len = max(edges[long_idxs[0]]["len"], edges[long_idxs[1]]["len"])
         centerline_mid = (m1 + m2) / 2.0
         result.update({"center": centerline_mid, "angle": angle_deg, "scale": long_len, "a": m1, "b": m2})
@@ -241,8 +207,9 @@ def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
             avg_short = (edges[short_idxs[0]]["len"] + edges[short_idxs[1]]["len"]) / 2.0
             centre_shifted = center
 
-        # keep detected angle for debug, overlay will ignore rotation per user's request
-        angle_for_debug = normalize_angle_deg(angle_deg)
+        # Keep angle info for debug, but user asked: "テンプレのまま角度関係なく貼る"
+        # So we return angle candidate as detected, but overlay will ignore rotation for pin/roller.
+        angle_for_debug = ((angle_deg + 180.0) % 360.0) - 180.0
         result.update({"center": centre_shifted, "angle": angle_for_debug, "scale": avg_short})
         return result
 
@@ -254,13 +221,13 @@ def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
         if np.linalg.norm(v) < 1e-6:
             v = np.array([1.0, 0.0])
         angle_deg = math.degrees(math.atan2(v[1], v[0]))
-        angle_for_template = normalize_angle_deg(angle_deg)
+        angle_for_template = ((angle_deg + 180.0) % 360.0) - 180.0
         long_len = max(edges[long_idxs[0]]["len"], edges[long_idxs[1]]["len"])
         centerline_mid = (m1 + m2) / 2.0
         result.update({"center": centerline_mid, "angle": angle_for_template, "scale": long_len})
         return result
 
-    # load / arrow
+    # load (keep existing behavior but keep normalization)
     if cls_name in ("load", "kajyu"):
         m1 = midpoint_of_edge(edges, short_idxs[0])
         m2 = midpoint_of_edge(edges, short_idxs[1])
@@ -277,10 +244,11 @@ def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
         if np.linalg.norm(dir_final) < 1e-6:
             dir_final = shaft
         angle_deg = math.degrees(math.atan2(dir_final[1], dir_final[0]))
-        # assume template arrow "tip is right", so template rotation = angle_deg
-        angle_for_template = normalize_angle_deg(angle_deg)
+        # keep the +180 correction you used earlier (you said load is currently reversed)
+        angle_deg = (angle_deg + 180.0) % 360.0
+        angle_deg = angle_deg if angle_deg <= 180.0 else angle_deg - 360.0
         long_len = max(edges[long_idxs[0]]["len"], edges[long_idxs[1]]["len"])
-        result.update({"center": seg_mid, "angle": angle_for_template, "scale": long_len, "tip": tip, "tail": tail})
+        result.update({"center": seg_mid, "angle": angle_deg, "scale": long_len, "tip": tip})
         return result
 
     # udl
@@ -307,125 +275,148 @@ def compute_placement_for_element(pts_raw, box_xywhr, cls_name, beam_lines):
     return result
 
 # ---------------------------
-# 梁調整：支点（ノード）で梁を繋ぎ、各支点を梁上にスナップ
-# - placements は (elem, place) のリストを直接更新する
+# --- ここから節点関連ユーティリティ
 # ---------------------------
-def adjust_beams_by_nodes(placements: List[tuple]):
-    node_names = set(["pin","roller","fixed","fix","kotei","hinge","load","kajyu","udl"])
-    # separate beams and others
-    beams = [(e,p) for e,p in placements if "beam" in e["name"]]
-    others = [(e,p) for e,p in placements if "beam" not in e["name"]]
-
-    for be, bplace in beams:
-        a = np.array(bplace.get("a", bplace["center"]))
-        b = np.array(bplace.get("b", bplace["center"]))
-        ba = b - a
-        denom = np.dot(ba, ba) + 1e-12
-        candidates = []
-        for oe, oplace in others:
-            if oe["name"] not in node_names:
-                continue
-            p = np.array(oplace["center"])
-            t = np.dot(p - a, ba) / denom
-            proj = a + t * ba
-            dist_to_line = np.linalg.norm(p - proj)
-            # accept a reasonable strip; distance threshold tuned
-            if -0.5 <= t <= 1.5 and dist_to_line < SNAP_DISTANCE_TO_BEAM:
-                candidates.append({"elem": oe, "place": oplace, "p": p, "t": t, "dist": dist_to_line, "proj": proj})
-        if len(candidates) >= 2:
-            candidates_sorted = sorted(candidates, key=lambda x: x["t"])
-            first = candidates_sorted[0]["proj"]
-            last = candidates_sorted[-1]["proj"]
-            # update beam endpoints & center & angle & scale
-            angle_deg = math.degrees(math.atan2(last[1] - first[1], last[0] - first[0]))
-            angle_deg = normalize_angle_deg(angle_deg)
-            center = (first + last) / 2.0
-            scale = float(np.linalg.norm(last - first))
-            bplace["center"] = center
-            bplace["angle"] = angle_deg
-            bplace["scale"] = scale
-            bplace["endpoint_a"] = first
-            bplace["endpoint_b"] = last
-            # snap each candidate node to beam projection
-            for c in candidates_sorted:
-                cplace = c["place"]
-                cplace["center"] = c["proj"]
-                cplace["snapped_to_beam"] = True
-            # also snap nodes very near the endpoints to endpoints
-            for oe, oplace in others:
-                if oe["name"] not in node_names:
+def cluster_points(points: List[np.ndarray], merge_thresh: float) -> List[np.ndarray]:
+    """
+    単純な距離閾値クラスタリング（連結成分的マージ）。
+    points: list of (2,) numpy arrays
+    """
+    if not points:
+        return []
+    pts = np.array(points, dtype=float)
+    N = len(pts)
+    groups = [{i} for i in range(N)]
+    # union-find by distance
+    changed = True
+    while changed:
+        changed = False
+        for i in range(N):
+            for j in range(i+1, N):
+                if groups[i] is None or groups[j] is None:
                     continue
-                p = np.array(oplace["center"])
-                if np.linalg.norm(p - first) < SNAP_NEAR_ENDPOINT:
-                    oplace["center"] = first
-                    oplace["snapped_to_beam"] = True
-                if np.linalg.norm(p - last) < SNAP_NEAR_ENDPOINT:
-                    oplace["center"] = last
-                    oplace["snapped_to_beam"] = True
-        else:
-            # not enough candidates: keep original endpoints but still try to snap any nodes close to segment
-            a = np.array(bplace.get("a", a))
-            b = np.array(bplace.get("b", b))
-            for oe, oplace in others:
-                if oe["name"] not in node_names:
-                    continue
-                p = np.array(oplace["center"])
-                proj, t = project_point_on_segment(p, a, b)
-                if np.linalg.norm(p - proj) < SNAP_DISTANCE_TO_BEAM and 0.0 <= t <= 1.0:
-                    oplace["center"] = proj
-                    oplace["snapped_to_beam"] = True
+                # pick any representative
+                rep_i = next(iter(groups[i]))
+                rep_j = next(iter(groups[j]))
+                if np.linalg.norm(pts[rep_i] - pts[rep_j]) <= merge_thresh:
+                    # merge j into i
+                    groups[i] = groups[i].union(groups[j])
+                    groups[j] = None
+                    changed = True
+    # build centroids
+    clusters = []
+    for g in groups:
+        if g is None:
+            continue
+        idxs = sorted(list(g))
+        centroid = pts[idxs].mean(axis=0)
+        clusters.append(centroid)
+    return clusters
 
-# ---------------------------
-# 荷重の先端を最も近い梁にスナップ
-# ---------------------------
-def snap_load_tips_to_beams(placements: List[tuple]):
-    # collect beam segments (use endpoint if present)
-    beams_seg = []
-    for e, place in placements:
-        if "beam" in e["name"]:
-            if "endpoint_a" in place and "endpoint_b" in place:
-                a = np.array(place["endpoint_a"])
-                b = np.array(place["endpoint_b"])
+def find_nearest_node_id(pt: np.ndarray, nodes: List[np.ndarray]) -> int:
+    if not nodes:
+        return -1
+    dists = [np.linalg.norm(pt - n) for n in nodes]
+    return int(np.argmin(dists))
+
+def build_nodes_from_geometry(beam_lines, supports, loads, img_diag):
+    """
+    beam_lines: [{'a':[x,y], 'b':[x,y], 'dir_unit':...}, ...]
+    supports:   [{'center':[x,y], 'class':'pin'|'roller'|'fixed'}, ...]
+    loads:      [{'tip':[x,y], 'center':[x,y]}, ...]
+    """
+
+    # =========================
+    # 1. 支点ノードをまず作る
+    # =========================
+    support_nodes = []
+
+    # 上方向ベクトル（画像では y が下に向かうので -1）
+    up = np.array([0, -1], dtype=float)
+
+    # 支点処理（ピン・ローラーは上方向、固定は梁へ投影）
+    for s in supports:
+        center = np.array(s["center"], dtype=float)
+        cls = s["class"].lower()
+
+        # ------------------------
+        # pin / roller → 上端ノード
+        # ------------------------
+        if cls in ("pin", "roller"):
+            offset = max(10.0, img_diag * 0.015)  # 画像に対する適度な距離
+            node = center + up * offset
+            support_nodes.append(node)
+
+        # ------------------------
+        # fixed → 最も近い梁に合わせる
+        # ------------------------
+        elif cls == "fixed":
+            closest_pt = None
+            closest_dist = 1e9
+
+            # 梁のいずれかに投影
+            for b in beam_lines:
+                a = np.array(b["a"], dtype=float)
+                d = np.array(b["dir_unit"], dtype=float)  # 単位方向ベクトル
+
+                # center を梁直線へ投影
+                t = np.dot(center - a, d)
+                proj = a + t * d
+
+                dist = np.linalg.norm(center - proj)
+                if dist < closest_dist:
+                    closest_dist = dist
+                    closest_pt = proj
+
+            # 投影点を支点ノードに採用
+            if closest_pt is not None:
+                support_nodes.append(closest_pt)
             else:
-                a = np.array(place.get("a", place["center"]))
-                b = np.array(place.get("b", place["center"]))
-            beams_seg.append({"a": a, "b": b, "place": place})
-    # for each load, snap tip to closest beam projection
-    for oe, oplace in placements:
-        if oe["name"] in ("load", "kajyu"):
-            tip = oplace.get("tip", None)
-            if tip is None:
-                continue
-            tip = np.array(tip)
-            best = None
-            for bs in beams_seg:
-                proj, t = project_point_on_segment(tip, bs["a"], bs["b"])
-                d = np.linalg.norm(proj - tip)
-                if best is None or d < best["d"]:
-                    best = {"proj": proj, "d": d, "bs": bs}
-            if best is not None and best["d"] < LOAD_SNAP_THRESHOLD:
-                proj = best["proj"]
-                cur_center = np.array(oplace["center"])
-                # shift whole arrow so tip lands on proj
-                delta = proj - tip
-                new_center = cur_center + delta
-                oplace["center"] = new_center
-                oplace["tip_proj"] = proj
-                oplace["snapped_to_beam"] = True
+                # fallback：とりあえず中心
+                support_nodes.append(center)
+
+    # =========================
+    # 2. 梁端点も候補に入れる
+    # =========================
+    beam_nodes = []
+    for b in beam_lines:
+        beam_nodes.append(np.array(b["a"], dtype=float))
+        beam_nodes.append(np.array(b["b"], dtype=float))
+
+    # =========================
+    # 3. 荷重も先端を優先して追加
+    # =========================
+    load_nodes = []
+    for L in loads:
+        if "tip" in L and L["tip"] is not None:
+            load_nodes.append(np.array(L["tip"], dtype=float))
+        else:
+            load_nodes.append(np.array(L["center"], dtype=float))
+
+    # =========================
+    # 4. すべてまとめてクラスタリング
+    # =========================
+    candidates = support_nodes + beam_nodes + load_nodes
+
+    merge_thresh = max(8.0, img_diag * 0.01)  # しっかり統合する距離
+    clustered = cluster_points(candidates, merge_thresh)
+
+    # numpy 配列に変換して返す
+    nodes = [np.array(c, dtype=float) for c in clustered]
+    return nodes
 
 # ---------------------------
 # Main
 # ---------------------------
 def main():
-    st.title("🏗️ 構造図 清書アプリ（fixed-v4-connected-fix）")
-    st.write("梁を支点で接続・荷重先端スナップ・ピン/ローラーは回転無視")
-
+    st.title("🏗️ 構造図 清書アプリ（fixed-v5: 節点検出付き）")
+    st.write("・ピン/ローラーはテンプレの向きそのまま貼る（角度無視）")
     model_path = st.text_input("YOLO OBB model path", value=DEFAULT_MODEL_PATH)
     conf_th = st.sidebar.slider("検出信頼度", 0.0, 1.0, 0.5, 0.01)
     show_det = st.sidebar.checkbox("検出ポリゴン表示", value=True)
     show_cleaned = st.sidebar.checkbox("清書画像表示", value=True)
+    show_nodes = st.sidebar.checkbox("節点表示 (番号付き)", value=True)
     uploaded = st.file_uploader("構造図アップロード", type=["png","jpg","jpeg"])
-
     template_files = {
         "pin": os.path.join(TEMPLATE_DIR, "pin.png"),
         "roller": os.path.join(TEMPLATE_DIR, "roller.png"),
@@ -479,21 +470,15 @@ def main():
     beam_lines = []
     elements = []
 
-    # detection & element list
+    # detection
     if hasattr(res, "obb") and res.obb:
         obb = res.obb
         N = len(to_numpy(obb.xyxyxyxy))
         for i in range(N):
-            try:
-                conf = float(to_numpy(obb.conf[i]))
-            except Exception:
-                continue
+            conf = float(to_numpy(obb.conf[i]))
             if conf < conf_th:
                 continue
-            try:
-                cls_id = int(to_numpy(obb.cls[i]))
-            except Exception:
-                continue
+            cls_id = int(to_numpy(obb.cls[i]))
             name = res.names[cls_id].lower().replace(" ", "")
 
             try:
@@ -501,6 +486,7 @@ def main():
             except Exception:
                 continue
 
+            # make vertex order stable (CW + top-left start)
             pts = order_pts_clockwise_start(pts, start_hint="top-left")
 
             try:
@@ -530,102 +516,153 @@ def main():
     if show_det:
         st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), caption="検出表示", use_container_width=True)
 
-    # initial placements
+    # placement
     placements = []
+    supports = []  # 支点リスト（pin/roller/fixed)
+    loads = []     # 荷重リスト (load)
     for e in elements:
         try:
             place = compute_placement_for_element(e["pts"], e["box_xywhr"], e["name"], beam_lines)
             placements.append((e, place))
+            if e["name"] in ("pin", "roller", "fixed"):
+                supports.append({"class": e["name"], "center": place["center"], "angle": place.get("angle", 0.0)})
+            if e["name"] in ("load", "kajyu"):
+                loads.append({"class": e["name"], "center": place["center"], "tip": place.get("tip", None), "angle": place.get("angle", 0.0)})
         except Exception as ex:
             st.write(f"配置計算失敗: {e['name']} : {ex}")
 
-    # adjust beams by nodes (snap centers, compute endpoints)
-    adjust_beams_by_nodes(placements)
-
-    # snap loads' tips to beams
-    snap_load_tips_to_beams(placements)
-
-    # draw beam connectors (black thick lines) first
-    connector_layer = np.zeros_like(cleaned)
-    for e, place in placements:
-        if "beam" in e["name"]:
-            a = place.get("endpoint_a", None)
-            b = place.get("endpoint_b", None)
-            if a is None or b is None:
-                a = place.get("a", place["center"])
-                b = place.get("b", place["center"])
-            a_i = (int(a[0]), int(a[1])); b_i = (int(b[0]), int(b[1]))
-            cv2.line(connector_layer, a_i, b_i, (0,0,0), thickness=4, lineType=cv2.LINE_AA)
-    mask = np.any(connector_layer != 0, axis=2)
-    cleaned[mask] = connector_layer[mask]
-
-    # overlay templates
+    # overlay (テンプレ貼り)
     for elem, place in placements:
         name = elem["name"]
         tpl = TEMPL.get(name)
         center = place["center"]
-        angle = float(place.get("angle", 0.0))
+        angle = float(place["angle"])  # angle kept for debug
         raw_scale = float(place.get("scale", 1.0))
 
-        if tpl is None:
-            cv2.circle(cleaned, (int(center[0]), int(center[1])), 6, (0,0,255), -1)
-            continue
-
-        th, tw = tpl.shape[:2]
-        tpl_long = max(th, tw)
+        # prepare factor
+        th, tw = (tpl.shape[0], tpl.shape[1]) if tpl is not None else (0,0)
+        tpl_long = max(th, tw) if tpl is not None else 40
         if raw_scale > 10:
             factor = max(raw_scale / tpl_long, 0.35)
         else:
             factor = max(raw_scale / 40.0, 0.35)
+
+        if tpl is None:
+            cv2.circle(cleaned, (int(center[0]), int(center[1])), 6, (0,0,255), -1)
+            continue
 
         if "beam" in name:
             factor = max(raw_scale / tpl_long, 0.5)
             tpl_scaled = scale_image(tpl, factor)
             angle_use = round(angle / 15.0) * 15.0
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle_use)
-            cleaned = overlay_rgba(cleaned, tpl_rot, place["center"])
+            cleaned = overlay_rgba(cleaned, tpl_rot, center)
 
         elif name in ("pin", "roller"):
             tpl_scaled = scale_image(tpl, factor)
-            # USER REQUEST: pin/roller keep template orientation (no rotation)
-            cleaned = overlay_rgba(cleaned, tpl_scaled, place["center"])
+            cleaned = overlay_rgba(cleaned, tpl_scaled, center)
 
         elif name == "fixed":
             tpl_scaled = scale_image(tpl, factor)
             angle_use = round(angle / 15.0) * 15.0
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle_use)
-            cleaned = overlay_rgba(cleaned, tpl_rot, place["center"])
-
-        elif name in ("load", "kajyu"):
-            tpl_scaled = scale_image(tpl, factor)
-            # Determine rotation according to template default tip direction
-            tip_dir = TEMPLATE_DEFAULT_TIP.get(name, "right")
-            if tip_dir == "right":
-                angle_use = round(angle / 15.0) * 15.0
-            elif tip_dir == "up":
-                # template tip up -> subtract 90
-                angle_use = round((angle - 90.0) / 15.0) * 15.0
-            else:
-                angle_use = round(angle / 15.0) * 15.0
-            tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle_use)
-            cleaned = overlay_rgba(cleaned, tpl_rot, place["center"])
+            cleaned = overlay_rgba(cleaned, tpl_rot, center)
 
         else:
             tpl_scaled = scale_image(tpl, factor)
             angle_use = round(angle / 15.0) * 15.0
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle_use)
-            cleaned = overlay_rgba(cleaned, tpl_rot, place["center"])
+            cleaned = overlay_rgba(cleaned, tpl_rot, center)
+
+    # ========== 節点生成 ==========
+    img_diag = math.hypot(img.shape[0], img.shape[1])
+    nodes = build_nodes_from_geometry(beam_lines, supports, loads, img_diag)
+
+    # build elements from beams: map beam endpoints to nearest nodes (avoid duplicates)
+    elements_conn = []
+    for b in beam_lines:
+        a = np.array(b["a"], dtype=float)
+        bb = np.array(b["b"], dtype=float)
+        ida = find_nearest_node_id(a, nodes)
+        idb = find_nearest_node_id(bb, nodes)
+        if ida == idb:
+            # degenerate: try to ignore or skip
+            continue
+        elements_conn.append({"type": "beam", "n1": ida, "n2": idb, "a": a.tolist(), "b": bb.tolist()})
+
+    # attach supports to nearest node
+    supports_attached = []
+    for s in supports:
+        nid = find_nearest_node_id(np.array(s["center"], dtype=float), nodes)
+        supports_attached.append({"type": s["class"], "node": nid, "center": s["center"].tolist(), "angle": float(s.get("angle",0.0))})
+
+    # attach loads to nearest node (prefer tip if exists)
+    loads_attached = []
+    for L in loads:
+        pick = L.get("tip", None)
+        if pick is None:
+            pick = L["center"]
+        nid = find_nearest_node_id(np.array(pick, dtype=float), nodes)
+        loads_attached.append({"type": L["class"], "node": nid, "center": L["center"].tolist(), "tip": (L.get("tip").tolist() if L.get("tip") is not None else None), "angle": float(L.get("angle",0.0))})
+
+    # draw nodes on cleaned and vis for debug
+    node_img = cleaned.copy()
+    vis_nodes_img = vis.copy()
+    for idx, n in enumerate(nodes):
+        x,y = int(n[0]), int(n[1])
+        cv2.circle(node_img, (x,y), 6, (255,0,0), -1)
+        cv2.putText(node_img, f"N{idx}", (x+6,y-6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 2)
+        cv2.circle(vis_nodes_img, (x,y), 6, (255,0,0), -1)
+        cv2.putText(vis_nodes_img, f"N{idx}", (x+6,y-6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 2)
+
+    # also draw elements connections on vis for clarity
+    for elem_conn in elements_conn:
+        n1 = elem_conn["n1"]; n2 = elem_conn["n2"]
+        p1 = tuple(map(int, nodes[n1]))
+        p2 = tuple(map(int, nodes[n2]))
+        cv2.line(vis_nodes_img, p1, p2, (0,128,255), 2)
+        cv2.line(node_img, p1, p2, (0,128,255), 2)
 
     if show_cleaned:
-        st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), caption="清書結果", use_container_width=True)
+        if show_nodes:
+            st.image(cv2.cvtColor(node_img, cv2.COLOR_BGR2RGB), caption="清書結果（節点表示）", use_container_width=True)
+        else:
+            st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), caption="清書結果", use_container_width=True)
+
+    if show_det:
+        st.image(cv2.cvtColor(vis_nodes_img, cv2.COLOR_BGR2RGB), caption="検出（節点/要素接続表示）", use_container_width=True)
+
+    # ========== 出力: 表 & JSON ==========
+    st.subheader("節点一覧")
+    node_table = []
+    for i, n in enumerate(nodes):
+        node_table.append({"id": i, "x": float(n[0]), "y": float(n[1])})
+    st.table(node_table)
+
+    st.subheader("要素（梁）一覧（節点インデックス）")
+    st.table([{"idx": i, "n1": e["n1"], "n2": e["n2"]} for i,e in enumerate(elements_conn)])
+
+    st.subheader("支持条件と荷重（節点インデックスへアタッチ済み）")
+    st.write("supports:")
+    st.table(supports_attached)
+    st.write("loads:")
+    st.table(loads_attached)
+
+    # JSON ダウンロード用
+    model_struct = {
+        "nodes": [{"id": i, "x": float(n[0]), "y": float(n[1])} for i,n in enumerate(nodes)],
+        "elements": elements_conn,
+        "supports": supports_attached,
+        "loads": loads_attached,
+        "meta": {"image_shape": [int(img.shape[0]), int(img.shape[1])]}
+    }
+    json_str = json.dumps(model_struct, indent=2, ensure_ascii=False)
+    st.download_button("構造データ(JSON)をダウンロード", data=json_str, file_name="structure_nodes.json", mime="application/json")
 
     st.subheader("配置デバッグ")
     for elem, place in placements:
         c = place["center"]
-        ang_disp = place.get("angle", 0.0)
-        snapped = place.get("snapped_to_beam", False)
-        extra = " (snapped)" if snapped else ""
-        st.write(f"{elem['name']}  center=({c[0]:.1f}, {c[1]:.1f})  angle={ang_disp:.1f}{extra}")
+        st.write(f"{elem['name']}  center=({c[0]:.1f}, {c[1]:.1f})  angle={place['angle']:.1f}")
 
 if __name__ == "__main__":
     main()

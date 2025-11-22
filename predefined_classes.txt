@@ -1,0 +1,7 @@
+beam
+pin
+roller
+fixed
+load
+moment
+hinge
