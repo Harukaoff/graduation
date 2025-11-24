@@ -409,7 +409,7 @@ for be in beam_endpoints:
         all_nodes.append(pt2)
         node_info.append({"type": "beam_endpoint", "beam_idx": be["beam_idx"]})
     
-    # ===== 梁の角度を15度刻みに補正 =====
+    # ===== 梁の角度を15度刻みに補正 + 垂直接続の検出 =====
     # 現在の角度を計算
     node1_arr = np.array(node1_coord) if not isinstance(node1_coord, np.ndarray) else node1_coord
     node2_arr = np.array(node2_coord) if not isinstance(node2_coord, np.ndarray) else node2_coord
@@ -421,6 +421,27 @@ for be in beam_endpoints:
     
     # 15度刻みに丸める
     corrected_angle = round(current_angle / 15) * 15
+    
+    # 垂直接続の検出: 他の梁と90度に近い場合は90度にする
+    for existing_conn in beam_connections:
+        existing_angle = existing_conn.get("angle", 0)
+        angle_diff = abs(corrected_angle - existing_angle)
+        
+        # 角度差を0-180度の範囲に正規化
+        if angle_diff > 180:
+            angle_diff = 360 - angle_diff
+        
+        # 90度に近い場合（85-95度の範囲）
+        if 85 <= angle_diff <= 95:
+            # 正確に90度にする
+            if angle_diff < 90:
+                corrected_angle = existing_angle + 90
+            else:
+                corrected_angle = existing_angle - 90
+            
+            # 0-360度の範囲に正規化
+            corrected_angle = corrected_angle % 360
+            break
     
     # 角度が変わった場合、端点2の座標を補正
     if abs(corrected_angle - current_angle) > 0.1:
