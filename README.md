@@ -191,7 +191,7 @@ streamlit run structural_analysis_app.py
 
 ## 👤 開発者
 
-森本遥香 (DA22340)
+Haruka　Morimoto
 
 ## 🙏 謝辞
 
