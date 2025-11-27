@@ -650,17 +650,19 @@ if beams_to_split:
 # ===== 清書画像生成 =====
 cleaned = np.ones_like(img) * 255
 
-# 梁を描画（線のみ、テンプレートは貼り付けない）
+# 梁を描画（接続後の節点座標を使用）
 for conn in beam_connections:
-    pt1 = np.array(conn["node1_coord"])
-    pt2 = np.array(conn["node2_coord"])
+    # 接続後の節点座標を取得
+    node1_idx = conn["node1_idx"]
+    node2_idx = conn["node2_idx"]
+    pt1 = np.array(all_nodes[node1_idx])
+    pt2 = np.array(all_nodes[node2_idx])
     cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (80, 80, 80), 4)
 
-# 支点を描画
+# 支点を描画（テンプレート上端が節点位置になるように配置）
 for i, s in enumerate(supports):
     name = s["type"]
     tpl = TEMPL.get(name)
-    center = s["node"]
     original_angle = s["angle"]
     
     # 支点の角度を調整
@@ -677,7 +679,28 @@ for i, s in enumerate(supports):
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.8)
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
-        cleaned = overlay_rgba(cleaned, tpl_rot, center)
+        
+        # テンプレート上端の位置を計算
+        h, w = tpl_rot.shape[:2]
+        top_pt_local = get_template_top_point(tpl_rot)
+        
+        # 節点位置からテンプレート上端へのオフセットを計算
+        # 節点位置 = テンプレート上端になるように配置
+        support_node_idx = node_info[i]["support_idx"] if i < len(node_info) and node_info[i]["type"] == "support" else None
+        if support_node_idx is not None:
+            # 支点の実際の節点座標を取得
+            for j, info in enumerate(node_info):
+                if info.get("type") == "support" and info.get("support_idx") == support_node_idx:
+                    node_coord = np.array(all_nodes[j])
+                    # テンプレート中心位置を計算（上端が節点位置になるように）
+                    center_offset = np.array([w // 2, h // 2]) - top_pt_local
+                    center = node_coord + center_offset
+                    cleaned = overlay_rgba(cleaned, tpl_rot, center)
+                    break
+        else:
+            # フォールバック: 元の方法
+            center = s["node"]
+            cleaned = overlay_rgba(cleaned, tpl_rot, center)
 
 # すべての節点を描画
 for i, node in enumerate(all_nodes):
@@ -700,25 +723,24 @@ for i, node in enumerate(all_nodes):
         cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 12, int(node_coord[1]) - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 0), 2)
 
-# 荷重を描画
+# 荷重を描画（接続後の座標を使用）
 for l in load_connections:
     name = l["type"]
     tpl = TEMPL.get(name)
-    tip = np.array(l["tip_coord"])
-    proj = np.array(l["proj_coord"])
     angle = l["angle"]
     
+    # 接続後の節点座標を使用
+    node_idx = l["node_idx"]
+    if node_idx >= 0 and node_idx < len(all_nodes):
+        proj = np.array(all_nodes[node_idx])
+    else:
+        proj = np.array(l["proj_coord"])
+    
+    # 荷重テンプレートは投影点（接続点）に配置
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
-        cleaned = overlay_rgba(cleaned, tpl_rot, tip)
-    
-    # 矢じり先端（赤丸）
-    cv2.circle(cleaned, tuple(map(int, tip)), 6, (0, 0, 255), -1)
-    # 梁上の投影点（青丸）
-    cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), -1)
-    # 先端から投影点への線
-    cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 255, 0), 2)
+        cleaned = overlay_rgba(cleaned, tpl_rot, proj)
 
 with col2:
     st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), "清書画像", use_container_width=True)
