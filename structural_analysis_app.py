@@ -269,18 +269,34 @@ with st.sidebar:
     
     st.header("⚙️ 解析設定")
     conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
-    y_align_th = st.slider("高さ揃え閾値(px)", 2.0, 100.0, 8.0, 1.0)
-    node_connect_th = st.slider("接続閾値(px)", 10, 200, 25, 1)
     
-    st.header("📐 材料特性")
-    young = st.number_input("ヤング係数 E", value=2.0e2, format="%.1e")
-    area = st.number_input("断面積 A", value=9.0e2, format="%.1e")
-    s_moment = st.number_input("断面二次モーメント I", value=6.75e4, format="%.1e")
+    # 固定値設定
+    y_align_th = 100.0
+    node_connect_th = 200
+    young = 2.0e2
+    area = 9.0e2
+    s_moment = 6.75e4
+    load_value = 10.0
+    moment_value = 10.0
+    udl_value = 5.0
     
-    st.header("📊 荷重設定")
-    load_value = st.number_input("集中荷重の大きさ", value=10.0)
-    moment_value = st.number_input("モーメント荷重の大きさ", value=10.0)
-    udl_value = st.number_input("等分布荷重の大きさ", value=5.0)
+    st.markdown("---")
+    st.subheader("📋 固定設定値")
+    st.markdown(f"""
+    **閾値設定**
+    - 高さ揃え閾値: `{y_align_th:.0f}px`
+    - 接続閾値: `{node_connect_th}px`
+    
+    **材料特性**
+    - ヤング係数 E: `{young:.1e}`
+    - 断面積 A: `{area:.1e}`
+    - 断面二次モーメント I: `{s_moment:.1e}`
+    
+    **荷重設定**
+    - 集中荷重: `{load_value:.1f}`
+    - モーメント荷重: `{moment_value:.1f}`
+    - 等分布荷重: `{udl_value:.1f}`
+    """)
 
 uploaded = st.file_uploader("📷 構造図画像をアップロード", type=["png", "jpg", "jpeg"])
 
