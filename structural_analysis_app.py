@@ -271,8 +271,8 @@ with st.sidebar:
     conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
     
     # 固定値設定
-    y_align_th = 100.0
-    node_connect_th = 200
+    y_align_th = 150.0
+    node_connect_th = 250
     young = 2.0e2
     area = 9.0e2
     s_moment = 6.75e4
@@ -555,12 +555,23 @@ for l in loads:
                     })
         
         # 等分布荷重の接続情報を記録（表示用）
+        # 最も近い梁の中点に表示位置を設定
+        display_coord = box_center
+        if udl_on_beams:
+            # 最初に見つかった梁の中点を使用
+            first_beam_idx = udl_on_beams[-1]["beam_idx"]
+            if first_beam_idx < len(beam_connections):
+                beam = beam_connections[first_beam_idx]
+                a = np.array(beam["node1_coord"])
+                b = np.array(beam["node2_coord"])
+                display_coord = (a + b) / 2  # 梁の中点
+        
         load_connections.append({
             "type": load_type,
             "tip_coord": box_center.tolist(),
-            "proj_coord": box_center.tolist(),
+            "proj_coord": display_coord.tolist() if isinstance(display_coord, np.ndarray) else display_coord,
             "node_idx": -1,
-            "on_beam": -1,
+            "on_beam": udl_on_beams[-1]["beam_idx"] if udl_on_beams else -1,
             "beam_idx_in_list": -1,
             "beam_t": 0.5,
             "angle": angle,
@@ -612,13 +623,33 @@ for l in loads:
             best_proj = proj
             best_t = t
     
-    # 投影点を節点として追加
-    if best_proj is not None:
+    # 投影点を梁の4等分点の最近傍にスナップ
+    if best_proj is not None and best_beam is not None:
+        a = np.array(best_beam["node1_coord"])
+        b = np.array(best_beam["node2_coord"])
+        
+        # 梁を4等分する点（t = 0, 0.25, 0.5, 0.75, 1.0）
+        quarter_points = [a + t * (b - a) for t in [0.0, 0.25, 0.5, 0.75, 1.0]]
+        quarter_t_values = [0.0, 0.25, 0.5, 0.75, 1.0]
+        
+        # 投影点から最も近い4等分点を探す
+        min_dist_to_quarter = float('inf')
+        best_quarter_idx = 2  # デフォルトは中点
+        for i, qp in enumerate(quarter_points):
+            dist = np.linalg.norm(best_proj - qp)
+            if dist < min_dist_to_quarter:
+                min_dist_to_quarter = dist
+                best_quarter_idx = i
+        
+        # 最近傍の4等分点を使用
+        snapped_proj = quarter_points[best_quarter_idx]
+        snapped_t = quarter_t_values[best_quarter_idx]
+        
         # 既存節点との距離をチェック
         min_dist_to_node = float('inf')
         snap_node_idx = -1
         for i, node in enumerate(all_nodes):
-            dist = np.linalg.norm(best_proj - node)
+            dist = np.linalg.norm(snapped_proj - node)
             if dist < min_dist_to_node:
                 min_dist_to_node = dist
                 snap_node_idx = i
@@ -628,22 +659,28 @@ for l in loads:
             load_node_idx = snap_node_idx
             load_node_coord = all_nodes[snap_node_idx]
             needs_split = False
+            final_t = snapped_t
         else:
             # 梁の途中に新規節点を追加
             load_node_idx = len(all_nodes)
-            load_node_coord = best_proj
-            all_nodes.append(best_proj)
-            node_info.append({"type": "load_point", "load_type": l["type"]})
+            load_node_coord = snapped_proj
+            all_nodes.append(snapped_proj)
+            node_info.append({"type": "load_point", "load_type": load_type})
             needs_split = True
+            final_t = snapped_t
             
             # 梁の分割が必要（tが0.1～0.9の範囲、つまり端点から十分離れている場合）
-            if 0.1 < best_t < 0.9:
+            if 0.1 < snapped_t < 0.9:
                 beams_to_split.append({
                     "beam_idx": best_beam_idx,
                     "split_node_idx": load_node_idx,
-                    "split_t": best_t,
+                    "split_t": snapped_t,
                     "original_beam": best_beam
                 })
+        
+        # 投影点を更新
+        best_proj = snapped_proj
+        best_t = final_t
     else:
         load_node_idx = -1
         load_node_coord = tip
@@ -809,24 +846,38 @@ for i, node in enumerate(all_nodes):
         cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 12, int(node_coord[1]) - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 0), 2)
 
-# 荷重を描画（接続後の座標を使用）
+# 荷重を描画（矢じり先端と梁上の点を接続）
 for l in load_connections:
     name = l["type"]
     tpl = TEMPL.get(name)
     angle = l["angle"]
     
-    # 接続後の節点座標を使用
+    # 矢じり先端の座標（元の検出位置）
+    tip = np.array(l["tip_coord"])
+    
+    # 梁上の接続点座標（4等分点）
     node_idx = l["node_idx"]
     if node_idx >= 0 and node_idx < len(all_nodes):
         proj = np.array(all_nodes[node_idx])
     else:
         proj = np.array(l["proj_coord"])
     
-    # 荷重テンプレートは投影点（接続点）に配置
+    # 等分布荷重でない場合、矢じり先端と梁上の点を線で接続
+    if not l.get("is_udl", False):
+        # 接続線を描画（緑色の細線）
+        cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 200, 0), 2)
+        
+        # 矢じり先端に小さな円を描画（荷重の作用点）
+        cv2.circle(cleaned, tuple(map(int, tip)), 5, (0, 0, 255), -1)
+        
+        # 梁上の接続点に円を描画
+        cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
+    
+    # 荷重テンプレートは矢じり先端に配置
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
-        cleaned = overlay_rgba(cleaned, tpl_rot, proj)
+        cleaned = overlay_rgba(cleaned, tpl_rot, tip)
 
 with col2:
     st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), "清書画像", use_container_width=True)
