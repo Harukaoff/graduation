@@ -224,24 +224,60 @@ def find_nearest_node(pt, nodes):
     dists = [np.linalg.norm(pt - n) for n in nodes]
     return int(np.argmin(dists))
 
-def get_load_arrow_tip(pts, angle):
-    """荷重の矢じりの先端座標を取得（角度に基づいて判定）"""
-    # 角度を正規化（0-360度）
-    angle = angle % 360
+def get_template_arrow_tip(tpl):
+    """テンプレート画像内の矢じり先端のローカル座標を取得"""
+    if tpl is None:
+        return np.array([0, 0])
     
-    # 角度に基づいて矢じりの方向を判定（15度刻みに対応）
-    # 0度 = 右向き、90度 = 下向き、180度 = 左向き、270度 = 上向き
+    alpha = tpl[..., 3]
+    pts = np.column_stack(np.where(alpha > 128))
     
-    if 45 <= angle < 135:  # 下向き（90度付近）
-        idx = np.argmax(pts[:, 1])  # y最大
-    elif 135 <= angle < 225:  # 左向き（180度付近）
-        idx = np.argmin(pts[:, 0])  # x最小
-    elif 225 <= angle < 315:  # 上向き（270度付近）
-        idx = np.argmin(pts[:, 1])  # y最小
-    else:  # 右向き（0度/360度付近）
-        idx = np.argmax(pts[:, 0])  # x最大
+    if len(pts) == 0:
+        h, w = tpl.shape[:2]
+        return np.array([h // 2, w // 2])
     
-    return pts[idx]
+    # テンプレートは下向き（90度）が基準
+    # 矢じりは最下端（y最大）
+    max_y = np.max(pts[:, 0])
+    bottom_pts = pts[pts[:, 0] == max_y]
+    center_x = np.mean(bottom_pts[:, 1])
+    
+    # (row, col) = (y, x) の順なので注意
+    return np.array([max_y, center_x])
+
+def get_rotated_arrow_tip(template, center, angle):
+    """回転後のテンプレートの矢じり先端の絶対座標を計算
+    
+    Args:
+        template: テンプレート画像
+        center: テンプレートの中心座標（画像上の絶対座標）
+        angle: 回転角度（度）
+    
+    Returns:
+        矢じり先端の絶対座標
+    """
+    h, w = template.shape[:2]
+    
+    # テンプレート内の矢じり先端のローカル座標
+    tip_local = get_template_arrow_tip(template)
+    
+    # テンプレート中心からのオフセット
+    offset = tip_local - np.array([h // 2, w // 2])
+    
+    # 回転行列を適用（画像座標系: y下向き正）
+    theta = np.deg2rad(angle)
+    rot_matrix = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta), np.cos(theta)]
+    ])
+    
+    # オフセットを回転（row, col順なので転置）
+    rotated_offset = rot_matrix @ np.array([offset[1], offset[0]])
+    
+    # 絶対座標を計算（x, y順に戻す）
+    tip_absolute = center + rotated_offset
+    
+    return tip_absolute
 
 # タイトルとロゴ
 col_logo, col_title = st.columns([1, 4])
@@ -585,10 +621,19 @@ for l in loads:
         continue
     
     # 集中荷重・モーメント荷重の処理
+    # テンプレートの中心座標
+    center = l["pts"].mean(axis=0)
+    
     if load_type in ["load"]:
-        tip = get_load_arrow_tip(l["pts"], angle)
+        # テンプレートを使って回転後の矢じり先端座標を計算
+        tpl = TEMPL.get(load_type)
+        if tpl is not None:
+            tip = get_rotated_arrow_tip(tpl, center, angle)
+        else:
+            # フォールバック: ボックスの中心
+            tip = center
     else:  # moment
-        tip = l["pts"].mean(axis=0)
+        tip = center
     
     # 荷重の向きを角度から判定
     if 45 <= angle < 135:  # 下向き
@@ -852,7 +897,7 @@ for l in load_connections:
     tpl = TEMPL.get(name)
     angle = l["angle"]
     
-    # 矢じり先端の座標（元の検出位置）
+    # 矢じり先端の座標（回転後の計算済み座標）
     tip = np.array(l["tip_coord"])
     
     # 梁上の接続点座標（4等分点）
@@ -873,11 +918,23 @@ for l in load_connections:
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
     
-    # 荷重テンプレートは矢じり先端に配置
+    # 荷重テンプレートを配置（矢じりが tip に来るように平行移動）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
-        cleaned = overlay_rgba(cleaned, tpl_rot, tip)
+        
+        # 回転後のテンプレート内の矢じり位置を取得
+        h_rot, w_rot = tpl_rot.shape[:2]
+        tip_local_rot = get_template_arrow_tip(tpl_rot)
+        
+        # テンプレート中心からのオフセット
+        offset = tip_local_rot - np.array([h_rot // 2, w_rot // 2])
+        
+        # テンプレート中心位置を計算（矢じりが tip に来るように）
+        # offset は (row, col) = (y, x) 順なので、(x, y) に変換
+        template_center = tip - np.array([offset[1], offset[0]])
+        
+        cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
 
 with col2:
     st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), "清書画像", use_container_width=True)
