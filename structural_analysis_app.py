@@ -250,31 +250,37 @@ def get_rotated_arrow_tip(template, center, angle):
     
     Args:
         template: テンプレート画像
-        center: テンプレートの中心座標（画像上の絶対座標）
-        angle: 回転角度（度）
+        center: テンプレートの中心座標（画像上の絶対座標 (x, y)）
+        angle: 回転角度（度、0度=右向き、90度=下向き）
     
     Returns:
-        矢じり先端の絶対座標
+        矢じり先端の絶対座標 (x, y)
     """
     h, w = template.shape[:2]
     
-    # テンプレート内の矢じり先端のローカル座標
+    # テンプレート内の矢じり先端のローカル座標 (row, col)
     tip_local = get_template_arrow_tip(template)
     
-    # テンプレート中心からのオフセット
-    offset = tip_local - np.array([h // 2, w // 2])
+    # テンプレート中心からのオフセット (row, col) = (dy, dx)
+    offset_row = tip_local[0] - h // 2
+    offset_col = tip_local[1] - w // 2
     
-    # 回転行列を適用（画像座標系: y下向き正）
-    theta = np.deg2rad(angle)
+    # (x, y) 座標系に変換
+    offset_x = offset_col
+    offset_y = offset_row
+    
+    # 回転行列を適用（画像座標系: y下向き正、時計回りが正）
+    # テンプレートの基準は下向き（90度）なので、-90度オフセットを適用
+    theta = np.deg2rad(angle - 90)
     rot_matrix = np.array([
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta), np.cos(theta)]
     ])
     
-    # オフセットを回転（row, col順なので転置）
-    rotated_offset = rot_matrix @ np.array([offset[1], offset[0]])
+    # オフセットを回転
+    rotated_offset = rot_matrix @ np.array([offset_x, offset_y])
     
-    # 絶対座標を計算（x, y順に戻す）
+    # 絶対座標を計算
     tip_absolute = center + rotated_offset
     
     return tip_absolute
@@ -918,21 +924,26 @@ for l in load_connections:
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
     
-    # 荷重テンプレートを配置（矢じりが tip に来るように平行移動）
+    # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+        # テンプレートの基準は下向き（90度）なので、-90度オフセットを適用
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle - 90)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
         tip_local_rot = get_template_arrow_tip(tpl_rot)
         
-        # テンプレート中心からのオフセット
-        offset = tip_local_rot - np.array([h_rot // 2, w_rot // 2])
+        # テンプレート中心からのオフセット (row, col)
+        offset_row = tip_local_rot[0] - h_rot // 2
+        offset_col = tip_local_rot[1] - w_rot // 2
         
-        # テンプレート中心位置を計算（矢じりが tip に来るように）
-        # offset は (row, col) = (y, x) 順なので、(x, y) に変換
-        template_center = tip - np.array([offset[1], offset[0]])
+        # (x, y) 座標系に変換
+        offset_x = offset_col
+        offset_y = offset_row
+        
+        # テンプレート中心位置を計算（矢じりが梁上の接続点 proj に来るように）
+        template_center = proj - np.array([offset_x, offset_y])
         
         cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
 
