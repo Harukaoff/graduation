@@ -269,9 +269,9 @@ def get_rotated_arrow_tip(template, center, angle):
     offset_x = offset_col
     offset_y = offset_row
     
-    # 回転行列を適用（画像座標系: y下向き正、時計回りが正）
-    # テンプレートの基準は下向き（90度）なので、-90度オフセットを適用
-    theta = np.deg2rad(angle - 90)
+    # 回転行列を適用（画像座標系: y下向き正）
+    # テンプレートの基準は下向き（90度）なので、90度からの差分を反時計回りに回転
+    theta = np.deg2rad(90 - angle)
     rot_matrix = np.array([
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta), np.cos(theta)]
@@ -534,6 +534,80 @@ for be in beam_endpoints:
         "snap1_dist": min_dist1,
         "snap2_dist": min_dist2
     })
+
+# ===== 重複梁の削除処理 =====
+# 1つの支点から2本以上の梁が出ている場合、最も長い1本だけを残す
+support_node_indices = [i for i, info in enumerate(node_info) if info.get("type") == "support"]
+
+beams_to_remove = []
+for support_idx in support_node_indices:
+    # この支点に接続している梁を探す
+    connected_beams = []
+    for i, beam in enumerate(beam_connections):
+        if beam["node1_idx"] == support_idx or beam["node2_idx"] == support_idx:
+            # 梁の長さを計算
+            node1 = np.array(beam["node1_coord"])
+            node2 = np.array(beam["node2_coord"])
+            length = np.linalg.norm(node2 - node1)
+            connected_beams.append((i, length))
+    
+    # 2本以上接続している場合、最も長い1本以外を削除対象にする
+    if len(connected_beams) > 1:
+        # 長さでソート（降順）
+        connected_beams.sort(key=lambda x: x[1], reverse=True)
+        # 最も長い梁以外を削除対象に追加
+        for beam_idx, _ in connected_beams[1:]:
+            if beam_idx not in beams_to_remove:
+                beams_to_remove.append(beam_idx)
+
+# 削除対象の梁を除外
+if beams_to_remove:
+    beam_connections = [beam for i, beam in enumerate(beam_connections) if i not in beams_to_remove]
+    st.info(f"ℹ️ 支点から複数の梁が出ていたため、{len(beams_to_remove)}本の梁を削除しました（最も長い梁のみを残しました）")
+
+# ===== 梁のクロス検出と削除 =====
+# 梁同士が交差している場合、片方を削除
+def segments_intersect(p1, p2, p3, p4):
+    """2つの線分が交差するかチェック（端点での接触は除く）"""
+    def ccw(A, B, C):
+        return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+    
+    # 端点が同じ場合は交差とみなさない
+    if np.allclose(p1, p3) or np.allclose(p1, p4) or np.allclose(p2, p3) or np.allclose(p2, p4):
+        return False
+    
+    return ccw(p1, p3, p4) != ccw(p2, p3, p4) and ccw(p1, p2, p3) != ccw(p1, p2, p4)
+
+beams_to_remove_cross = []
+for i in range(len(beam_connections)):
+    if i in beams_to_remove_cross:
+        continue
+    beam1 = beam_connections[i]
+    p1 = np.array(beam1["node1_coord"])
+    p2 = np.array(beam1["node2_coord"])
+    
+    for j in range(i + 1, len(beam_connections)):
+        if j in beams_to_remove_cross:
+            continue
+        beam2 = beam_connections[j]
+        p3 = np.array(beam2["node1_coord"])
+        p4 = np.array(beam2["node2_coord"])
+        
+        # 交差チェック
+        if segments_intersect(p1, p2, p3, p4):
+            # 短い方の梁を削除対象にする
+            len1 = np.linalg.norm(p2 - p1)
+            len2 = np.linalg.norm(p4 - p3)
+            if len1 < len2:
+                beams_to_remove_cross.append(i)
+            else:
+                beams_to_remove_cross.append(j)
+            break
+
+# 交差している梁を削除
+if beams_to_remove_cross:
+    beam_connections = [beam for i, beam in enumerate(beam_connections) if i not in beams_to_remove_cross]
+    st.info(f"ℹ️ 梁が交差していたため、{len(beams_to_remove_cross)}本の梁を削除しました")
 
 # ===== 荷重の接続処理 =====
 # 集中荷重・モーメント荷重の矢じり先端を梁上の節点に接続し、梁を分割
@@ -927,8 +1001,8 @@ for l in load_connections:
     # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
-        # テンプレートの基準は下向き（90度）なので、-90度オフセットを適用
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle - 90)
+        # テンプレートの基準は下向き（90度）なので、90度からの差分を反時計回りに回転
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, 90 - angle)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
