@@ -494,16 +494,100 @@ for be in beam_endpoints:
     })
 
 # ===== 荷重の接続処理 =====
-# 荷重の矢じり先端を梁上の節点に接続し、梁を分割
+# 集中荷重・モーメント荷重の矢じり先端を梁上の節点に接続し、梁を分割
+# 等分布荷重はボックスのx座標範囲で梁に作用
 load_connections = []
 beams_to_split = []  # 分割が必要な梁のリスト
+udl_on_beams = []  # 等分布荷重が作用する梁のリスト
 
 for l in loads:
-    # 荷重の矢じりの先端を取得
-    if l["type"] in ["load", "udl"]:
-        tip = get_load_arrow_tip(l["pts"], l["angle"])
+    load_type = l["type"]
+    angle = l["angle"]
+    
+    # 等分布荷重の場合は特別処理
+    if load_type == "udl":
+        # UDLボックスのx座標範囲を取得
+        pts = l["pts"]
+        x_min = np.min(pts[:, 0])
+        x_max = np.max(pts[:, 0])
+        y_min = np.min(pts[:, 1])
+        y_max = np.max(pts[:, 1])
+        box_center = pts.mean(axis=0)
+        
+        # 荷重の向きを角度から判定
+        # 0度=右、90度=下、180度=左、270度=上
+        if 45 <= angle < 135:  # 下向き
+            load_direction = np.array([0, -1])
+        elif 135 <= angle < 225:  # 左向き
+            load_direction = np.array([-1, 0])
+        elif 225 <= angle < 315:  # 上向き
+            load_direction = np.array([0, 1])
+        else:  # 右向き
+            load_direction = np.array([1, 0])
+        
+        # この範囲に重なる梁を探す
+        for idx, beam in enumerate(beam_connections):
+            a = np.array(beam["node1_coord"])
+            b = np.array(beam["node2_coord"])
+            
+            # 梁のx座標範囲
+            beam_x_min = min(a[0], b[0])
+            beam_x_max = max(a[0], b[0])
+            
+            # x座標範囲が重なるかチェック
+            overlap_x_min = max(x_min, beam_x_min)
+            overlap_x_max = min(x_max, beam_x_max)
+            
+            if overlap_x_min < overlap_x_max:
+                # 梁の中心がUDLボックスの近くにあるかチェック
+                beam_center = (a + b) / 2
+                dist_to_box = np.linalg.norm(beam_center - box_center)
+                
+                # 距離が閾値以内なら等分布荷重を適用
+                if dist_to_box < 150:  # 閾値
+                    udl_on_beams.append({
+                        "beam_idx": idx,
+                        "load_value": udl_value,
+                        "direction": load_direction,
+                        "angle": angle,
+                        "x_range": (overlap_x_min, overlap_x_max),
+                        "box_range": (x_min, x_max, y_min, y_max)
+                    })
+        
+        # 等分布荷重の接続情報を記録（表示用）
+        load_connections.append({
+            "type": load_type,
+            "tip_coord": box_center.tolist(),
+            "proj_coord": box_center.tolist(),
+            "node_idx": -1,
+            "on_beam": -1,
+            "beam_idx_in_list": -1,
+            "beam_t": 0.5,
+            "angle": angle,
+            "conf": float(l["conf"]),
+            "dist_to_beam": 0,
+            "needs_split": False,
+            "is_udl": True,
+            "x_range": (x_min, x_max),
+            "direction": load_direction.tolist()
+        })
+        continue
+    
+    # 集中荷重・モーメント荷重の処理
+    if load_type in ["load"]:
+        tip = get_load_arrow_tip(l["pts"], angle)
     else:  # moment
         tip = l["pts"].mean(axis=0)
+    
+    # 荷重の向きを角度から判定
+    if 45 <= angle < 135:  # 下向き
+        load_direction = np.array([0, -1])
+    elif 135 <= angle < 225:  # 左向き
+        load_direction = np.array([-1, 0])
+    elif 225 <= angle < 315:  # 上向き
+        load_direction = np.array([0, 1])
+    else:  # 右向き
+        load_direction = np.array([1, 0])
     
     # 最も近い梁を探して、梁上に投影
     best_beam = None
@@ -566,17 +650,19 @@ for l in loads:
         needs_split = False
     
     load_connections.append({
-        "type": l["type"],
+        "type": load_type,
         "tip_coord": tip.tolist(),
         "proj_coord": best_proj.tolist() if best_proj is not None else tip.tolist(),
         "node_idx": load_node_idx,
         "on_beam": best_beam["beam_idx"] if best_beam else -1,
         "beam_idx_in_list": best_beam_idx,
         "beam_t": best_t,
-        "angle": l["angle"],
+        "angle": angle,
         "conf": float(l["conf"]),
         "dist_to_beam": best_dist,
-        "needs_split": needs_split
+        "needs_split": needs_split,
+        "is_udl": False,
+        "direction": load_direction.tolist()
     })
 
 # ===== 梁の分割処理 =====
@@ -777,33 +863,21 @@ with st.spinner("FEM解析データ準備中..."):
                 nodes_df.loc[i, 'rc_x'] = 1
                 nodes_df.loc[i, 'rc_y'] = 1
     
-    # 荷重条件設定
+    # 荷重条件設定（集中荷重・モーメント荷重）
     for l in load_connections:
+        # 等分布荷重はスキップ（後で梁に直接設定）
+        if l.get("is_udl", False):
+            continue
+        
         node_idx = l["node_idx"]
         
         if node_idx >= 0 and node_idx < len(nodes_df):
             if l["type"] == "load":
-                angle = l["angle"]
-                # 荷重の方向を角度から判定（FEM規則: x右向き正、y上向き正）
-                if 45 <= angle < 135:  # 下向き（90度付近）
-                    nodes_df.loc[node_idx, 'ef_y'] += -load_value
-                elif 135 <= angle < 225:  # 左向き（180度付近）
-                    nodes_df.loc[node_idx, 'ef_x'] += -load_value
-                elif 225 <= angle < 315:  # 上向き（270度付近）
-                    nodes_df.loc[node_idx, 'ef_y'] += load_value
-                else:  # 右向き（0度/360度付近）
-                    nodes_df.loc[node_idx, 'ef_x'] += load_value
-            elif l["type"] == "udl":
-                # 等分布荷重は簡易的に集中荷重として扱う
-                angle = l["angle"]
-                if 45 <= angle < 135:  # 下向き
-                    nodes_df.loc[node_idx, 'ef_y'] += -udl_value
-                elif 135 <= angle < 225:  # 左向き
-                    nodes_df.loc[node_idx, 'ef_x'] += -udl_value
-                elif 225 <= angle < 315:  # 上向き
-                    nodes_df.loc[node_idx, 'ef_y'] += udl_value
-                else:  # 右向き
-                    nodes_df.loc[node_idx, 'ef_x'] += udl_value
+                # 荷重の方向ベクトルを使用（FEM規則: x右向き正、y上向き正）
+                direction = np.array(l["direction"])
+                # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
+                nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value
+                nodes_df.loc[node_idx, 'ef_y'] += -direction[1] * load_value  # y軸反転
             elif l["type"] == "momentl":
                 # momentL = 反時計回り = 正（FEM規則に従う）
                 nodes_df.loc[node_idx, 'ef_m'] += -moment_value
@@ -841,6 +915,10 @@ with st.spinner("FEM解析データ準備中..."):
         if angle < 0:
             angle += 360
         
+        # 等分布荷重の初期値
+        Ws_val = 0
+        We_val = 0
+        
         elements_df = pd.concat([elements_df, pd.DataFrame([{
             'young': young,
             'area': area,
@@ -849,12 +927,38 @@ with st.spinner("FEM解析データ準備中..."):
             'angle': angle,
             'start': start_idx,
             'end': end_idx,
-            'Ws': 0,
-            'We': 0
+            'Ws': Ws_val,
+            'We': We_val
         }])], ignore_index=True)
     
     # インデックスをリセット
     elements_df = elements_df.reset_index(drop=True)
+    
+    # 等分布荷重を梁に適用
+    for udl in udl_on_beams:
+        beam_idx = udl["beam_idx"]
+        if beam_idx < len(elements_df):
+            direction = np.array(udl["direction"])
+            load_val = udl["load_value"]
+            
+            # 梁の角度を取得
+            beam_angle = elements_df.loc[beam_idx, 'angle']
+            beam_angle_rad = np.radians(beam_angle)
+            
+            # 梁の方向ベクトル
+            beam_dir = np.array([np.cos(beam_angle_rad), np.sin(beam_angle_rad)])
+            
+            # 荷重を梁のローカル座標系に変換
+            # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
+            load_global = np.array([direction[0], -direction[1]]) * load_val
+            
+            # 梁の垂直方向成分を計算（梁に垂直な荷重）
+            beam_perp = np.array([-beam_dir[1], beam_dir[0]])
+            load_perp = np.dot(load_global, beam_perp)
+            
+            # 等分布荷重を設定（始点と終点で同じ値）
+            elements_df.loc[beam_idx, 'Ws'] = load_perp
+            elements_df.loc[beam_idx, 'We'] = load_perp
 
 # デバッグ情報（展開可能）
 with st.expander("🔍 検出詳細情報"):
@@ -874,9 +978,27 @@ with st.expander("🔍 検出詳細情報"):
     
     st.write(f"\n**荷重の接続状況**")
     for l in load_connections:
-        split_info = " [梁を分割]" if l.get('needs_split', False) else ""
-        angle_info = f", 角度: {l['angle']:.0f}°"
-        st.write(f"{l['type']}: 節点N{l['node_idx']} (梁{l['on_beam']}, t={l['beam_t']:.2f}, 距離: {l['dist_to_beam']:.1f}px{angle_info}){split_info}")
+        if l.get('is_udl', False):
+            # 等分布荷重
+            x_range = l.get('x_range', (0, 0))
+            direction = l.get('direction', [0, 0])
+            dir_str = f"方向: ({direction[0]:.1f}, {direction[1]:.1f})"
+            st.write(f"{l['type']}: x範囲 [{x_range[0]:.1f}, {x_range[1]:.1f}], 角度: {l['angle']:.0f}°, {dir_str}")
+        else:
+            # 集中荷重・モーメント荷重
+            split_info = " [梁を分割]" if l.get('needs_split', False) else ""
+            direction = l.get('direction', [0, 0])
+            dir_str = f", 方向: ({direction[0]:.1f}, {direction[1]:.1f})"
+            st.write(f"{l['type']}: 節点N{l['node_idx']} (梁{l['on_beam']}, t={l['beam_t']:.2f}, 距離: {l['dist_to_beam']:.1f}px, 角度: {l['angle']:.0f}°{dir_str}){split_info}")
+    
+    if udl_on_beams:
+        st.write(f"\n**等分布荷重が作用する梁**")
+        for udl in udl_on_beams:
+            beam_idx = udl["beam_idx"]
+            load_val = udl["load_value"]
+            direction = udl["direction"]
+            x_range = udl["x_range"]
+            st.write(f"梁{beam_idx}: 荷重値={load_val:.1f}, 方向=({direction[0]:.1f}, {direction[1]:.1f}), x範囲=[{x_range[0]:.1f}, {x_range[1]:.1f}]")
     
     st.write(f"\n**節点一覧**")
     for i, (node, info) in enumerate(zip(all_nodes, node_info)):
