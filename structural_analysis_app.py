@@ -1180,14 +1180,13 @@ with st.spinner("FEM解析データ準備中..."):
         
         if node_idx >= 0 and node_idx < len(nodes_df):
             if l["type"] == "load":
-                # 荷重の方向ベクトルを使用（FEM規則: x右向き正、y上向き正）
+                # 荷重の方向ベクトルを使用
                 direction = np.array(l["direction"])
-                # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
+                # FEMライブラリは画像座標系（y下向き正）を使用しているため、そのまま適用
                 # 画像: 右=[1,0], 下=[0,1], 左=[-1,0], 上=[0,-1]
-                # FEM: 右=ef_x正, 下=ef_y負, 左=ef_x負, 上=ef_y正
-                # y軸を反転: FEM_y = -画像_y
+                # FEM: 右=ef_x正, 下=ef_y正, 左=ef_x負, 上=ef_y負
                 nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value
-                nodes_df.loc[node_idx, 'ef_y'] += -direction[1] * load_value  # y軸反転
+                nodes_df.loc[node_idx, 'ef_y'] += direction[1] * load_value  # そのまま適用
             elif l["type"] == "momentl":
                 # momentL = 反時計回り = 正（FEM規則に従う）
                 nodes_df.loc[node_idx, 'ef_m'] += -moment_value
@@ -1259,9 +1258,8 @@ with st.spinner("FEM解析データ準備中..."):
             beam_dir = np.array([np.cos(beam_angle_rad), np.sin(beam_angle_rad)])
             
             # 荷重を梁のローカル座標系に変換
-            # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
-            # y軸を反転: FEM_y = -画像_y
-            load_global = np.array([direction[0], -direction[1]]) * load_val
+            # FEMライブラリは画像座標系（y下向き正）を使用しているため、そのまま適用
+            load_global = np.array([direction[0], direction[1]]) * load_val
             
             # 梁の垂直方向成分を計算（梁に垂直な荷重）
             beam_perp = np.array([-beam_dir[1], beam_dir[0]])
