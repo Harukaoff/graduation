@@ -269,10 +269,14 @@ def get_rotated_arrow_tip(template, center, angle):
     offset_x = offset_col
     offset_y = offset_row
     
-    # 回転行列を適用（画像座標系: y下向き正）
-    # テンプレートの基準は下向き（90度）なので、angleから90度を引いた角度で回転
-    # 時計回りの回転なので符号を反転
+    # 回転行列を適用（画像座標系: y下向き正、OpenCVは反時計回りが正）
+    # テンプレートの基準は下向き（90度）
+    # 目標角度angleに対して、90度からの差分を計算
+    # 例: 上向き（270度）なら 270-90=180度回転
+    #     右向き（0度）なら 0-90=-90度（=270度）回転
     theta = np.deg2rad(angle - 90)
+    
+    # 標準的な回転行列（反時計回り）
     rot_matrix = np.array([
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta), np.cos(theta)]
@@ -703,16 +707,11 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
-        # 荷重の向きを角度から判定
+        # 荷重の向きを角度から直接計算
         # 0度=右、90度=下、180度=左、270度=上
-        if 45 <= angle < 135:  # 下向き
-            load_direction = np.array([0, -1])
-        elif 135 <= angle < 225:  # 左向き
-            load_direction = np.array([-1, 0])
-        elif 225 <= angle < 315:  # 上向き
-            load_direction = np.array([0, 1])
-        else:  # 右向き
-            load_direction = np.array([1, 0])
+        # 画像座標系: x右向き正、y下向き正
+        angle_rad = np.deg2rad(angle)
+        load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
         
         # この範囲に重なる梁を探す
         for idx, beam in enumerate(beam_connections):
@@ -788,15 +787,11 @@ for l in loads:
     else:  # moment
         tip = center
     
-    # 荷重の向きを角度から判定
-    if 45 <= angle < 135:  # 下向き
-        load_direction = np.array([0, -1])
-    elif 135 <= angle < 225:  # 左向き
-        load_direction = np.array([-1, 0])
-    elif 225 <= angle < 315:  # 上向き
-        load_direction = np.array([0, 1])
-    else:  # 右向き
-        load_direction = np.array([1, 0])
+    # 荷重の向きを角度から直接計算
+    # 0度=右、90度=下、180度=左、270度=上
+    # 画像座標系: x右向き正、y下向き正
+    angle_rad = np.deg2rad(angle)
+    load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
     
     # 最も近い梁を探して、梁上に投影
     best_beam = None
@@ -1142,10 +1137,11 @@ with st.spinner("FEM解析データ準備中..."):
                 # 荷重の方向ベクトルを使用（FEM規則: x右向き正、y上向き正）
                 direction = np.array(l["direction"])
                 # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
-                # direction: 下向き=[0,-1], 上向き=[0,1], 左向き=[-1,0], 右向き=[1,0]
-                # FEM: 下向き荷重=ef_y負, 上向き荷重=ef_y正
+                # 画像: 右=[1,0], 下=[0,1], 左=[-1,0], 上=[0,-1]
+                # FEM: 右=ef_x正, 下=ef_y負, 左=ef_x負, 上=ef_y正
+                # y軸を反転: FEM_y = -画像_y
                 nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value
-                nodes_df.loc[node_idx, 'ef_y'] += direction[1] * load_value  # そのまま適用
+                nodes_df.loc[node_idx, 'ef_y'] += -direction[1] * load_value  # y軸反転
             elif l["type"] == "momentl":
                 # momentL = 反時計回り = 正（FEM規則に従う）
                 nodes_df.loc[node_idx, 'ef_m'] += -moment_value
@@ -1218,8 +1214,8 @@ with st.spinner("FEM解析データ準備中..."):
             
             # 荷重を梁のローカル座標系に変換
             # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
-            # direction: 下向き=[0,-1], 上向き=[0,1]
-            load_global = np.array([direction[0], direction[1]]) * load_val
+            # y軸を反転: FEM_y = -画像_y
+            load_global = np.array([direction[0], -direction[1]]) * load_val
             
             # 梁の垂直方向成分を計算（梁に垂直な荷重）
             beam_perp = np.array([-beam_dir[1], beam_dir[0]])
