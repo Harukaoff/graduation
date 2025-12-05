@@ -366,9 +366,9 @@ if not st.button("🚀 解析実行", type="primary"):
 # 画像サイズを取得
 img_height, img_width = img.shape[:2]
 
-# 固定閾値（元の値に戻す）
+# 固定閾値
 base_y_align_th = 150.0
-base_node_connect_th = 250
+base_node_connect_th = 300
 
 def is_valid_structure(supports_count, beams_count, loads_count):
     """解析可能な構造かどうかを判定"""
@@ -1141,8 +1141,10 @@ with st.spinner("FEM解析データ準備中..."):
                 # 荷重の方向ベクトルを使用（FEM規則: x右向き正、y上向き正）
                 direction = np.array(l["direction"])
                 # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
+                # direction: 下向き=[0,-1], 上向き=[0,1], 左向き=[-1,0], 右向き=[1,0]
+                # FEM: 下向き荷重=ef_y負, 上向き荷重=ef_y正
                 nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value
-                nodes_df.loc[node_idx, 'ef_y'] += -direction[1] * load_value  # y軸反転
+                nodes_df.loc[node_idx, 'ef_y'] += direction[1] * load_value  # そのまま適用
             elif l["type"] == "momentl":
                 # momentL = 反時計回り = 正（FEM規則に従う）
                 nodes_df.loc[node_idx, 'ef_m'] += -moment_value
@@ -1215,7 +1217,8 @@ with st.spinner("FEM解析データ準備中..."):
             
             # 荷重を梁のローカル座標系に変換
             # 画像座標系（y下向き正）からFEM座標系（y上向き正）に変換
-            load_global = np.array([direction[0], -direction[1]]) * load_val
+            # direction: 下向き=[0,-1], 上向き=[0,1]
+            load_global = np.array([direction[0], direction[1]]) * load_val
             
             # 梁の垂直方向成分を計算（梁に垂直な荷重）
             beam_perp = np.array([-beam_dir[1], beam_dir[0]])
