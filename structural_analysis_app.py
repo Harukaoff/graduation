@@ -310,11 +310,16 @@ with st.sidebar:
     st.markdown("---")
     
     st.header("⚙️ 解析設定")
-    conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
+    
+    # 自動調整モードの選択
+    auto_adjust = st.checkbox("閾値自動調整", value=True, help="検出信頼度を自動調整して、解析可能な構造を探します")
+    
+    if not auto_adjust:
+        conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
+    else:
+        conf_th = 0.45  # 初期値（後で自動調整）
     
     # 固定値設定
-    y_align_th = 150.0
-    node_connect_th = 250
     young = 2.0e2
     area = 9.0e2
     s_moment = 6.75e4
@@ -325,10 +330,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📋 固定設定値")
     st.markdown(f"""
-    **閾値設定**
-    - 高さ揃え閾値: `{y_align_th:.0f}px`
-    - 接続閾値: `{node_connect_th}px`
-    
     **材料特性**
     - ヤング係数 E: `{young:.1e}`
     - 断面積 A: `{area:.1e}`
@@ -362,11 +363,82 @@ if not MODEL_PATH or not os.path.exists(MODEL_PATH):
 if not st.button("🚀 解析実行", type="primary"):
     st.stop()
 
-with st.spinner("画像認識中..."):
-    model = YOLO(MODEL_PATH)
-    res = model(img, conf=conf_th, imgsz=640)[0]
-    obb = res.obb
+# 画像サイズに基づいて閾値を自動計算
+img_height, img_width = img.shape[:2]
+img_diagonal = np.sqrt(img_height**2 + img_width**2)
 
+# 画像サイズに応じた基本閾値（対角線の比率で計算）
+base_y_align_th = img_diagonal * 0.05  # 対角線の5%
+base_node_connect_th = img_diagonal * 0.08  # 対角線の8%
+
+def is_valid_structure(supports_count, beams_count, loads_count):
+    """解析可能な構造かどうかを判定"""
+    # 最低限の要素が必要
+    if supports_count < 2:  # 支点が2つ以上
+        return False
+    if beams_count < 1:  # 梁が1つ以上
+        return False
+    # 荷重は0でもOK（自重のみの解析も可能）
+    return True
+
+# 自動調整モードの場合、最適な信頼度を探す
+if auto_adjust:
+    with st.spinner("最適な検出信頼度を探索中..."):
+        model = YOLO(MODEL_PATH)
+        
+        # 信頼度の候補（高い方から試す）
+        conf_candidates = [0.50, 0.45, 0.40, 0.35, 0.30, 0.25]
+        best_conf = None
+        best_result = None
+        
+        for trial_conf in conf_candidates:
+            res = model(img, conf=trial_conf, imgsz=640)[0]
+            obb = res.obb
+            
+            # 要素をカウント
+            temp_supports, temp_beams, temp_loads = [], [], []
+            N = len(to_numpy(obb.xyxyxyxy)) if hasattr(obb, "xyxyxyxy") else 0
+            
+            for i in range(N):
+                conf = float(to_numpy(obb.conf[i]))
+                if conf < trial_conf: continue
+                cls_id = int(to_numpy(obb.cls[i]))
+                name = res.names[cls_id].lower().replace(" ", "")
+                
+                if name in support_types:
+                    temp_supports.append(name)
+                elif name == "beam":
+                    temp_beams.append(name)
+                elif name in load_types:
+                    temp_loads.append(name)
+            
+            # 有効な構造かチェック
+            if is_valid_structure(len(temp_supports), len(temp_beams), len(temp_loads)):
+                best_conf = trial_conf
+                best_result = res
+                break
+        
+        if best_conf is None:
+            st.error("❌ 解析可能な構造が検出できませんでした。画像を確認してください。")
+            st.stop()
+        
+        conf_th = best_conf
+        res = best_result
+        st.success(f"✅ 最適な検出信頼度: {conf_th:.2f}")
+        
+        # 閾値も自動調整（検出された要素数に応じて）
+        y_align_th = base_y_align_th
+        node_connect_th = base_node_connect_th
+else:
+    with st.spinner("画像認識中..."):
+        model = YOLO(MODEL_PATH)
+        res = model(img, conf=conf_th, imgsz=640)[0]
+        
+        # 手動モードでも画像サイズに応じた閾値を使用
+        y_align_th = base_y_align_th
+        node_connect_th = base_node_connect_th
+
+obb = res.obb
 supports, beams, loads = [], [], []
 N = len(to_numpy(obb.xyxyxyxy)) if hasattr(obb, "xyxyxyxy") else 0
 
@@ -1155,7 +1227,13 @@ with st.spinner("FEM解析データ準備中..."):
 
 # デバッグ情報（展開可能）
 with st.expander("🔍 検出詳細情報"):
-    st.write(f"**検出された要素**")
+    st.write(f"**自動調整された設定**")
+    st.write(f"- 検出信頼度: {conf_th:.2f}")
+    st.write(f"- 高さ揃え閾値: {y_align_th:.1f}px")
+    st.write(f"- 接続閾値: {node_connect_th:.1f}px")
+    st.write(f"- 画像サイズ: {img_width}x{img_height}px")
+    
+    st.write(f"\n**検出された要素**")
     st.write(f"- 支点: {len(supports)}個")
     st.write(f"- 梁: {len(beams)}個")
     st.write(f"- 荷重: {len(loads)}個")
