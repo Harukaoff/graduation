@@ -270,8 +270,9 @@ def get_rotated_arrow_tip(template, center, angle):
     offset_y = offset_row
     
     # 回転行列を適用（画像座標系: y下向き正）
-    # テンプレートの基準は下向き（90度）なので、90度からの差分を反時計回りに回転
-    theta = np.deg2rad(90 - angle)
+    # テンプレートの基準は下向き（90度）なので、angleから90度を引いた角度で回転
+    # 時計回りの回転なので符号を反転
+    theta = np.deg2rad(angle - 90)
     rot_matrix = np.array([
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta), np.cos(theta)]
@@ -1073,8 +1074,8 @@ for l in load_connections:
     # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
-        # テンプレートの基準は下向き（90度）なので、90度からの差分を反時計回りに回転
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, 90 - angle)
+        # テンプレートの基準は下向き（90度）なので、angleから90度を引いた角度で回転
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle - 90)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
