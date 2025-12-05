@@ -378,7 +378,8 @@ def is_valid_structure(supports_count, beams_count, loads_count):
         return False
     if beams_count < 1:  # 梁が1つ以上
         return False
-    # 荷重は0でもOK（自重のみの解析も可能）
+    if loads_count < 1:  # 荷重要素が1つ以上
+        return False
     return True
 
 # 自動調整モードの場合、最適な信頼度を探す
