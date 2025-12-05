@@ -363,13 +363,12 @@ if not MODEL_PATH or not os.path.exists(MODEL_PATH):
 if not st.button("🚀 解析実行", type="primary"):
     st.stop()
 
-# 画像サイズに基づいて閾値を自動計算
+# 画像サイズを取得
 img_height, img_width = img.shape[:2]
-img_diagonal = np.sqrt(img_height**2 + img_width**2)
 
-# 画像サイズに応じた基本閾値（対角線の比率で計算）
-base_y_align_th = img_diagonal * 0.05  # 対角線の5%
-base_node_connect_th = img_diagonal * 0.08  # 対角線の8%
+# 固定閾値（元の値に戻す）
+base_y_align_th = 150.0
+base_node_connect_th = 250
 
 def is_valid_structure(supports_count, beams_count, loads_count):
     """解析可能な構造かどうかを判定"""
@@ -387,8 +386,8 @@ if auto_adjust:
     with st.spinner("最適な検出信頼度を探索中..."):
         model = YOLO(MODEL_PATH)
         
-        # 信頼度の候補（高い方から試す）
-        conf_candidates = [0.50, 0.45, 0.40, 0.35, 0.30, 0.25]
+        # 信頼度の候補（高い方から試す、0.2まで）
+        conf_candidates = [0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20]
         best_conf = None
         best_result = None
         
