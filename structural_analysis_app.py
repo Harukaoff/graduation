@@ -1096,7 +1096,53 @@ st.success("✅ 画像認識・清書完了")
 
 # ===== FEM解析用データ構造への変換 =====
 with st.spinner("FEM解析データ準備中..."):
-    # all_nodesをそのまま使用（既に重複排除済み）
+    # ===== 孤立節点の削除 =====
+    # 梁に接続されている節点のインデックスを収集
+    connected_nodes = set()
+    for conn in beam_connections:
+        connected_nodes.add(conn["node1_idx"])
+        connected_nodes.add(conn["node2_idx"])
+    
+    # 孤立節点（梁に接続されていない節点）を特定
+    isolated_nodes = []
+    for i in range(len(all_nodes)):
+        if i not in connected_nodes:
+            isolated_nodes.append(i)
+    
+    # 孤立節点を削除し、節点インデックスを再マッピング
+    if isolated_nodes:
+        st.info(f"ℹ️ 孤立節点を{len(isolated_nodes)}個削除しました")
+        
+        # 新しい節点リストと情報リストを作成
+        new_all_nodes = []
+        new_node_info = []
+        old_to_new_idx = {}  # 古いインデックス → 新しいインデックスのマッピング
+        
+        new_idx = 0
+        for old_idx in range(len(all_nodes)):
+            if old_idx not in isolated_nodes:
+                new_all_nodes.append(all_nodes[old_idx])
+                new_node_info.append(node_info[old_idx])
+                old_to_new_idx[old_idx] = new_idx
+                new_idx += 1
+        
+        # 梁の接続情報を更新
+        for conn in beam_connections:
+            conn["node1_idx"] = old_to_new_idx[conn["node1_idx"]]
+            conn["node2_idx"] = old_to_new_idx[conn["node2_idx"]]
+        
+        # 荷重の接続情報を更新
+        for l in load_connections:
+            if l["node_idx"] >= 0 and l["node_idx"] in old_to_new_idx:
+                l["node_idx"] = old_to_new_idx[l["node_idx"]]
+            else:
+                l["node_idx"] = -1  # 孤立節点に接続していた荷重は無効化
+        
+        # リストを更新
+        all_nodes = new_all_nodes
+        node_info = new_node_info
+    
+    # all_nodesを使用（孤立節点削除済み）
     num_nodes = len(all_nodes)
     
     # nodes_df作成
