@@ -456,19 +456,29 @@ for i in range(N):
     pts = order_cw_start_top_left(pts)
     # 角度計算
     if name in load_types:
-        # 荷重の場合：ボックスの中心から最も遠い点への方向を矢印の向きとする
+        # 荷重の場合：短辺の中点への方向を矢印の向きとする
+        # 4辺の長さを計算
+        edge_lengths = []
+        for j in range(4):
+            next_j = (j + 1) % 4
+            length = np.linalg.norm(pts[next_j] - pts[j])
+            edge_lengths.append((length, j, next_j))
+        
+        # 長さでソート
+        edge_lengths.sort()
+        
+        # 最も短い辺（短辺）の中点を計算
+        shortest_edge = edge_lengths[0]
+        p1 = pts[shortest_edge[1]]
+        p2 = pts[shortest_edge[2]]
+        short_edge_midpoint = (p1 + p2) / 2
+        
+        # ボックスの中心を計算
         center = pts.mean(axis=0)
         
-        # 各頂点から中心までの距離を計算
-        distances = [np.linalg.norm(pt - center) for pt in pts]
-        
-        # 最も遠い点（矢じり側）を見つける
-        farthest_idx = np.argmax(distances)
-        farthest_point = pts[farthest_idx]
-        
-        # 中心から最も遠い点への方向を角度とする
-        angle_raw = math.degrees(math.atan2(farthest_point[1] - center[1], 
-                                            farthest_point[0] - center[0]))
+        # 中心から短辺の中点への方向を角度とする
+        angle_raw = math.degrees(math.atan2(short_edge_midpoint[1] - center[1], 
+                                            short_edge_midpoint[0] - center[0]))
         
         # 0-360度に正規化
         if angle_raw < 0:
