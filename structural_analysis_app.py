@@ -454,22 +454,21 @@ for i in range(N):
     name = res.names[cls_id].lower().replace(" ", "")
     pts = to_numpy(obb.xyxyxyxy[i]).reshape(4, 2)
     pts = order_cw_start_top_left(pts)
-    # 角度計算：荷重は長辺の方向、梁は短辺の方向
+    # 角度計算
     if name in load_types:
-        # 荷重の場合：矢印の向き（長辺の方向）を検出
-        # 4点から最も長い辺を見つける
-        edge_lengths = []
-        for j in range(4):
-            next_j = (j + 1) % 4
-            length = np.linalg.norm(pts[next_j] - pts[j])
-            edge_lengths.append((length, j, next_j))
-        edge_lengths.sort(reverse=True)
+        # 荷重の場合：ボックスの中心から最も遠い点への方向を矢印の向きとする
+        center = pts.mean(axis=0)
         
-        # 最も長い辺の方向を角度とする
-        longest_edge = edge_lengths[0]
-        p1 = pts[longest_edge[1]]
-        p2 = pts[longest_edge[2]]
-        angle_raw = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+        # 各頂点から中心までの距離を計算
+        distances = [np.linalg.norm(pt - center) for pt in pts]
+        
+        # 最も遠い点（矢じり側）を見つける
+        farthest_idx = np.argmax(distances)
+        farthest_point = pts[farthest_idx]
+        
+        # 中心から最も遠い点への方向を角度とする
+        angle_raw = math.degrees(math.atan2(farthest_point[1] - center[1], 
+                                            farthest_point[0] - center[0]))
         
         # 0-360度に正規化
         if angle_raw < 0:
