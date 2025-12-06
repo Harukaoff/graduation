@@ -454,10 +454,35 @@ for i in range(N):
     name = res.names[cls_id].lower().replace(" ", "")
     pts = to_numpy(obb.xyxyxyxy[i]).reshape(4, 2)
     pts = order_cw_start_top_left(pts)
-    angle = round_angle_deg(
-        math.degrees(math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])) if name != "beam" else
-        math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0]))
-    )
+    # 角度計算：荷重は長辺の方向、梁は短辺の方向
+    if name in load_types:
+        # 荷重の場合：矢印の向き（長辺の方向）を検出
+        # 4点から最も長い辺を見つける
+        edge_lengths = []
+        for j in range(4):
+            next_j = (j + 1) % 4
+            length = np.linalg.norm(pts[next_j] - pts[j])
+            edge_lengths.append((length, j, next_j))
+        edge_lengths.sort(reverse=True)
+        
+        # 最も長い辺の方向を角度とする
+        longest_edge = edge_lengths[0]
+        p1 = pts[longest_edge[1]]
+        p2 = pts[longest_edge[2]]
+        angle_raw = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+        
+        # 0-360度に正規化
+        if angle_raw < 0:
+            angle_raw += 360
+        
+        # 15度刻みに丸める
+        angle = round_angle_deg(angle_raw)
+    elif name == "beam":
+        # 梁の場合：長辺の方向
+        angle = round_angle_deg(math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0])))
+    else:
+        # 支点の場合
+        angle = round_angle_deg(math.degrees(math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])))
     if name in support_types:
         tpl = TEMPL.get(name)
         node = None
@@ -1385,10 +1410,44 @@ try:
         # draw_lib.make_figureを使用して変形図を作成
         fig_list_deform = draw_lib.make_figure(M_S)
         
+        # 変形量のスケールを拡大（最大変位を構造の1/10程度に）
+        max_displacement = 0
+        for df in fig_list_deform:
+            for i in range(len(df)):
+                dx = df.loc[i, 'ax'] - df.loc[i, 'x']
+                dy = df.loc[i, 'ay'] - df.loc[i, 'y']
+                disp = np.sqrt(dx**2 + dy**2)
+                max_displacement = max(max_displacement, disp)
+        
+        # 構造の代表長さを計算
+        all_coords = []
+        for conn in beam_connections:
+            all_coords.append(conn["node1_coord"])
+            all_coords.append(conn["node2_coord"])
+        all_coords = np.array(all_coords)
+        structure_size = np.max(np.ptp(all_coords, axis=0))
+        
+        # スケール係数を計算（構造の1/10を目標）
+        if max_displacement > 1e-6:
+            scale_factor = (structure_size / 10) / max_displacement
+        else:
+            scale_factor = 1.0
+        
+        # 変形をスケール拡大
+        fig_list_deform_scaled = []
+        for df in fig_list_deform:
+            df_scaled = df.copy()
+            for i in range(len(df_scaled)):
+                dx = df_scaled.loc[i, 'ax'] - df_scaled.loc[i, 'x']
+                dy = df_scaled.loc[i, 'ay'] - df_scaled.loc[i, 'y']
+                df_scaled.loc[i, 'ax'] = df_scaled.loc[i, 'x'] + dx * scale_factor
+                df_scaled.loc[i, 'ay'] = df_scaled.loc[i, 'y'] + dy * scale_factor
+            fig_list_deform_scaled.append(df_scaled)
+        
         fig, ax = plt.subplots(figsize=(12, 8))
         ax.set_aspect('equal')
         ax.grid(True, alpha=0.3)
-        ax.set_title("変形図", fontsize=16, fontweight='bold')
+        ax.set_title(f"変形図（変形倍率: {scale_factor:.1f}倍）", fontsize=16, fontweight='bold')
         
         # 元の形状（灰色）
         for conn in beam_connections:
@@ -1396,9 +1455,9 @@ try:
             pt2 = np.array(conn["node2_coord"])
             ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=2, alpha=0.3, label='元形状' if conn == beam_connections[0] else '')
         
-        # 変形後の形状（赤色）
-        for df in fig_list_deform:
-            ax.plot(df['ax'], df['ay'], 'r-', linewidth=2, label='変形後' if df is fig_list_deform[0] else '')
+        # 変形後の形状（赤色、スケール拡大済み）
+        for df in fig_list_deform_scaled:
+            ax.plot(df['ax'], df['ay'], 'r-', linewidth=2, label='変形後' if df is fig_list_deform_scaled[0] else '')
         
         # 節点
         for i, row in nodes_df.iterrows():
