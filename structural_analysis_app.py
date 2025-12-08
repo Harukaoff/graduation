@@ -486,7 +486,10 @@ for i in range(N):
         
         # 短辺は2つあり、180度反対方向を向いている
         # 斜めの荷重が-90度ずれているので、90度補正を追加
-        angle_raw = (angle_raw + 90) % 360
+        # ただし、270度と90度（上下方向）については補正しない
+        if not (45 <= angle_raw < 135 or 225 <= angle_raw < 315):
+            # 上下方向以外（斜めや左右）の場合のみ90度補正
+            angle_raw = (angle_raw + 90) % 360
         
         # 15度刻みに丸める
         angle = round_angle_deg(angle_raw)
