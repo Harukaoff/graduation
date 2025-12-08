@@ -485,10 +485,8 @@ for i in range(N):
             angle_raw += 360
         
         # 短辺は2つあり、180度反対方向を向いている
-        # 90度（下向き）が正しいので、それ以外の角度で補正が必要か判定
-        # 実際には、下向き以外（45-135度以外）の場合は180度回転
-        if not (45 <= angle_raw < 135):
-            angle_raw = (angle_raw + 180) % 360
+        # 斜めの荷重が-90度ずれているので、90度補正を追加
+        angle_raw = (angle_raw + 90) % 360
         
         # 15度刻みに丸める
         angle = round_angle_deg(angle_raw)
@@ -831,7 +829,11 @@ for l in loads:
     # 0度=右、90度=下、180度=左、270度=上
     # 画像座標系: x右向き正、y下向き正
     angle_rad = np.deg2rad(angle)
-    load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
+    load_direction_initial = np.array([np.cos(angle_rad), np.sin(angle_rad)])
+    
+    # 梁との位置関係で向きを判定（上下方向の荷重の場合）
+    # まず最も近い梁を見つける必要があるので、ここでは初期方向を保存
+    load_direction = load_direction_initial
     
     # 最も近い梁を探して、梁上に投影
     best_beam = None
@@ -914,6 +916,27 @@ for l in loads:
         # 投影点を更新
         best_proj = snapped_proj
         best_t = final_t
+        
+        # 梁との位置関係で荷重の向きを補正（上下方向の荷重の場合）
+        if best_beam is not None and load_type == "load":
+            # 荷重の中心が梁より上にあるか下にあるかを判定
+            beam_a = np.array(best_beam["node1_coord"])
+            beam_b = np.array(best_beam["node2_coord"])
+            beam_center_y = (beam_a[1] + beam_b[1]) / 2
+            load_center_y = center[1]
+            
+            # 上下方向の荷重（270度付近または90度付近）の場合のみ補正
+            if 225 <= angle < 315 or 45 <= angle < 135:
+                if load_center_y < beam_center_y:
+                    # 荷重が梁より上にある → 下向き荷重（ef_y正）
+                    if 225 <= angle < 315:  # 上向きとして検出されている場合
+                        angle = 90  # 下向きに補正
+                        load_direction = np.array([0, 1])
+                else:
+                    # 荷重が梁より下にある → 上向き荷重（ef_y負）
+                    if 45 <= angle < 135:  # 下向きとして検出されている場合
+                        angle = 270  # 上向きに補正
+                        load_direction = np.array([0, -1])
     else:
         load_node_idx = -1
         load_node_coord = tip
