@@ -823,7 +823,9 @@ for l in loads:
             "needs_split": False,
             "is_udl": True,
             "x_range": (x_min, x_max),
-            "direction": load_direction.tolist()
+            "direction": load_direction.tolist(),
+            "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
+            "bbox_center": box_center.tolist()  # バウンディングボックス中心を追加
         })
         continue
     
@@ -971,7 +973,9 @@ for l in loads:
         "dist_to_beam": best_dist,
         "needs_split": needs_split,
         "is_udl": False,
-        "direction": load_direction.tolist()
+        "direction": load_direction.tolist(),
+        "bbox_pts": l["pts"].tolist(),  # バウンディングボックス座標を追加
+        "bbox_center": center.tolist()  # バウンディングボックス中心を追加
     })
 
 # ===== 梁の分割処理 =====
@@ -1235,10 +1239,33 @@ for l in load_connections:
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
     
-    # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
-    if tpl is not None:
+    # 荷重テンプレートを配置（バウンディングボックスの検出結果に合わせて）
+    if tpl is not None and "bbox_pts" in l:
+        # バウンディングボックス情報を直接使用
+        bbox_pts = np.array(l["bbox_pts"])
+        bbox_center = np.array(l["bbox_center"])
+        
+        # バウンディングボックスのサイズを計算
+        bbox_width = np.max(bbox_pts[:, 0]) - np.min(bbox_pts[:, 0])
+        bbox_height = np.max(bbox_pts[:, 1]) - np.min(bbox_pts[:, 1])
+        
+        # テンプレートをバウンディングボックスのサイズに合わせてスケール
+        tpl_h, tpl_w = tpl.shape[:2]
+        scale_x = bbox_width / tpl_w
+        scale_y = bbox_height / tpl_h
+        # アスペクト比を保持してスケール
+        scale = min(scale_x, scale_y) * 0.8  # バウンディングボックス内に収まるように調整
+        
+        tpl_scaled = scale_image(tpl, scale)
+        
+        # バウンディングボックスの角度で回転
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+        
+        # バウンディングボックスの中心にテンプレートを配置
+        cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
+    elif tpl is not None:
+        # フォールバック: 従来の方法
         tpl_scaled = scale_image(tpl, 0.9)
-        # テンプレート回転：検出角度をそのまま使用
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
         
         # 回転後のテンプレート内の矢じり位置を取得
