@@ -464,15 +464,46 @@ for i in range(N):
     name = res.names[cls_id].lower().replace(" ", "")
     pts = to_numpy(obb.xyxyxyxy[i]).reshape(4, 2)
     pts = order_cw_start_top_left(pts)
-    # 角度計算（YOLOの検出結果をそのまま使用）
+    # 角度計算
     if name in load_types:
-        # 荷重の場合：YOLOで検出された角度をそのまま使用
-        angle_raw = math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0]))
+        # 荷重の場合：短辺を基準とした矢印軸の計算
+        # 4辺の長さを計算して短辺を特定
+        edge_lengths = []
+        for j in range(4):
+            next_j = (j + 1) % 4
+            length = np.linalg.norm(pts[next_j] - pts[j])
+            edge_lengths.append((length, j, next_j))
+        
+        # 長さでソート（短い順）
+        edge_lengths.sort()
+        
+        # 最も短い辺（短辺1）と2番目に短い辺（短辺2）を取得
+        short_edge1 = edge_lengths[0]
+        short_edge2 = edge_lengths[1]
+        
+        # 短辺1の中点
+        p1_1 = pts[short_edge1[1]]
+        p1_2 = pts[short_edge1[2]]
+        short_midpoint1 = (p1_1 + p1_2) / 2
+        
+        # 短辺2の中点
+        p2_1 = pts[short_edge2[1]]
+        p2_2 = pts[short_edge2[2]]
+        short_midpoint2 = (p2_1 + p2_2) / 2
+        
+        # 2つの短辺の中点を結んだ線が矢印の軸
+        arrow_axis = short_midpoint2 - short_midpoint1
+        angle_raw = math.degrees(math.atan2(arrow_axis[1], arrow_axis[0]))
+        
         # 0-360度に正規化
         if angle_raw < 0:
             angle_raw += 360
         # 15度刻みに丸める
         angle = round_angle_deg(angle_raw)
+        
+        # 矢じり位置の決定（梁に近い側の短辺中点）
+        # 後で梁との距離を計算して決定するため、両方の中点を保存
+        load_short_midpoints = (short_midpoint1, short_midpoint2)
     elif name == "beam":
         # 梁の場合：長辺の方向
         angle = round_angle_deg(math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0])))
@@ -490,7 +521,11 @@ for i in range(N):
     elif name == "beam":
         beams.append({"type": "beam", "pts": pts, "angle": round_angle_deg(angle), "conf": conf})
     elif name in load_types:
-        loads.append({"type": name, "pts": pts, "angle": round_angle_deg(angle), "conf": conf})
+        load_data = {"type": name, "pts": pts, "angle": round_angle_deg(angle), "conf": conf}
+        # 短辺中点情報を追加
+        if 'load_short_midpoints' in locals():
+            load_data["short_midpoints"] = load_short_midpoints
+        loads.append(load_data)
 
 nodes = np.array([s["node"] for s in supports]) if supports else np.empty((0, 2))
 nodes = align_nodes_y(nodes, thresh=y_align_th) if len(nodes) >= 2 else nodes
@@ -796,13 +831,38 @@ for l in loads:
     # テンプレートの中心座標
     center = l["pts"].mean(axis=0)
     
-    if load_type in ["load"]:
-        # テンプレートを使って回転後の矢じり先端座標を計算
+    # 短辺中点情報がある場合は、梁に近い側を矢じり位置として使用
+    if "short_midpoints" in l and load_type in ["load"]:
+        midpoint1, midpoint2 = l["short_midpoints"]
+        
+        # まず仮の梁との距離を計算して、どちらの短辺中点が梁に近いかを判定
+        min_dist_to_beam = float('inf')
+        closest_midpoint = midpoint1
+        
+        # 全ての梁との距離を計算
+        for beam in beam_connections:
+            beam_a = np.array(beam["node1_coord"])
+            beam_b = np.array(beam["node2_coord"])
+            beam_center = (beam_a + beam_b) / 2
+            
+            dist1 = np.linalg.norm(midpoint1 - beam_center)
+            dist2 = np.linalg.norm(midpoint2 - beam_center)
+            
+            if dist1 < min_dist_to_beam:
+                min_dist_to_beam = dist1
+                closest_midpoint = midpoint1
+            if dist2 < min_dist_to_beam:
+                min_dist_to_beam = dist2
+                closest_midpoint = midpoint2
+        
+        # 梁に近い側の短辺中点を矢じり位置とする
+        tip = closest_midpoint
+    elif load_type in ["load"]:
+        # フォールバック: テンプレートを使った計算
         tpl = TEMPL.get(load_type)
         if tpl is not None:
             tip = get_rotated_arrow_tip(tpl, center, angle)
         else:
-            # フォールバック: ボックスの中心
             tip = center
     else:  # moment
         tip = center
