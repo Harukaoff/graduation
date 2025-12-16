@@ -313,9 +313,15 @@ with st.sidebar:
     
     st.header("⚙️ 解析設定")
     
-    # 検出信頼度を固定値に設定
-    conf_th = 0.20
-    st.info(f"検出信頼度: {conf_th:.2f}（固定値）")
+    # 信頼度設定方式の選択
+    auto_conf = st.checkbox("🤖 自動信頼度調整", value=True, help="解析可能な構造が検出されるまで信頼度を自動調整します")
+    
+    if auto_conf:
+        st.info("📊 自動調整モード: 解析可能な構造が検出されるまで信頼度を0.8から0.2まで自動調整します")
+        conf_th = 0.8  # 初期値（自動調整で変更される）
+    else:
+        conf_th = st.slider("🎯 検出信頼度", 0.1, 0.9, 0.5, 0.05, 
+                           help="値が高いほど確実な検出のみを採用します")
     
     # 固定値設定
     young = 2.0e2
@@ -382,7 +388,66 @@ def is_valid_structure(supports_count, beams_count, loads_count):
 # 画像認識実行
 with st.spinner("画像認識中..."):
     model = YOLO(MODEL_PATH)
-    res = model(img, conf=conf_th, imgsz=640)[0]
+    
+    # 自動信頼度調整
+    if auto_conf:
+        # 自動調整モード：解析可能な構造が見つかるまで信頼度を下げていく
+        conf_candidates = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+        best_conf = None
+        best_result = None
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for idx, test_conf in enumerate(conf_candidates):
+            status_text.text(f"信頼度 {test_conf:.1f} で検出中...")
+            progress_bar.progress((idx + 1) / len(conf_candidates))
+            
+            # テスト実行
+            test_res = model(img, conf=test_conf, imgsz=640)[0]
+            test_obb = test_res.obb
+            
+            # 要素数をカウント
+            test_supports = 0
+            test_beams = 0
+            test_loads = 0
+            
+            if hasattr(test_obb, "xyxyxyxy"):
+                test_N = len(to_numpy(test_obb.xyxyxyxy))
+                for i in range(test_N):
+                    test_conf_val = float(to_numpy(test_obb.conf[i]))
+                    if test_conf_val < test_conf:
+                        continue
+                    test_cls_id = int(to_numpy(test_obb.cls[i]))
+                    test_name = test_res.names[test_cls_id].lower().replace(" ", "")
+                    
+                    if test_name in support_types:
+                        test_supports += 1
+                    elif test_name == "beam":
+                        test_beams += 1
+                    elif test_name in load_types:
+                        test_loads += 1
+            
+            # 解析可能な構造かチェック
+            if is_valid_structure(test_supports, test_beams, test_loads):
+                best_conf = test_conf
+                best_result = test_res
+                status_text.success(f"✅ 信頼度 {test_conf:.1f} で解析可能な構造を検出しました！")
+                break
+        
+        progress_bar.empty()
+        
+        if best_conf is not None:
+            conf_th = best_conf
+            res = best_result
+            st.info(f"🎯 自動調整結果: 信頼度 {conf_th:.1f} を使用")
+        else:
+            conf_th = 0.2
+            res = model(img, conf=conf_th, imgsz=640)[0]
+            status_text.warning("⚠️ 解析可能な構造が見つかりませんでした。信頼度 0.2 で続行します。")
+    else:
+        # 手動モード
+        res = model(img, conf=conf_th, imgsz=640)[0]
     
     # 固定閾値を使用
     y_align_th = base_y_align_th
@@ -1225,8 +1290,9 @@ with st.spinner("FEM解析データ準備中..."):
 
 # デバッグ情報（展開可能）
 with st.expander("🔍 検出詳細情報"):
-    st.write(f"**自動調整された設定**")
-    st.write(f"- 検出信頼度: {conf_th:.2f}")
+    st.write(f"**使用された設定**")
+    mode_text = "自動調整" if auto_conf else "手動設定"
+    st.write(f"- 検出信頼度: {conf_th:.2f} ({mode_text})")
     st.write(f"- 高さ揃え閾値: {y_align_th:.1f}px")
     st.write(f"- 接続閾値: {node_connect_th:.1f}px")
     st.write(f"- 画像サイズ: {img_width}x{img_height}px")
