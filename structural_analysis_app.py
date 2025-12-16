@@ -269,12 +269,8 @@ def get_rotated_arrow_tip(template, center, angle):
     offset_x = offset_col
     offset_y = offset_row
     
-    # 回転行列を適用（画像座標系: y下向き正、OpenCVは反時計回りが正）
-    # テンプレートの基準は下向き（90度）
-    # 目標角度angleに対して、90度からの差分を計算
-    # 例: 上向き（270度）なら 270-90=180度回転
-    #     右向き（0度）なら 0-90=-90度（=270度）回転
-    theta = np.deg2rad(angle - 90)
+    # 回転行列を適用（シンプルな方法：検出角度をそのまま使用）
+    theta = np.deg2rad(angle)
     
     # 標準的な回転行列（反時計回り）
     rot_matrix = np.array([
@@ -316,13 +312,9 @@ with st.sidebar:
     
     st.header("⚙️ 解析設定")
     
-    # 自動調整モードの選択
-    auto_adjust = st.checkbox("閾値自動調整", value=True, help="検出信頼度を自動調整して、解析可能な構造を探します")
-    
-    if not auto_adjust:
-        conf_th = st.slider("検出信頼度", 0.2, 1.0, 0.45, 0.01)
-    else:
-        conf_th = 0.45  # 初期値（後で自動調整）
+    # 検出信頼度を固定値に設定
+    conf_th = 0.20
+    st.info(f"検出信頼度: {conf_th:.2f}（固定値）")
     
     # 固定値設定
     young = 2.0e2
@@ -386,62 +378,14 @@ def is_valid_structure(supports_count, beams_count, loads_count):
         return False
     return True
 
-# 自動調整モードの場合、最適な信頼度を探す
-if auto_adjust:
-    with st.spinner("最適な検出信頼度を探索中..."):
-        model = YOLO(MODEL_PATH)
-        
-        # 信頼度の候補（高い方から試す、0.2まで）
-        conf_candidates = [0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20]
-        best_conf = None
-        best_result = None
-        
-        for trial_conf in conf_candidates:
-            res = model(img, conf=trial_conf, imgsz=640)[0]
-            obb = res.obb
-            
-            # 要素をカウント
-            temp_supports, temp_beams, temp_loads = [], [], []
-            N = len(to_numpy(obb.xyxyxyxy)) if hasattr(obb, "xyxyxyxy") else 0
-            
-            for i in range(N):
-                conf = float(to_numpy(obb.conf[i]))
-                if conf < trial_conf: continue
-                cls_id = int(to_numpy(obb.cls[i]))
-                name = res.names[cls_id].lower().replace(" ", "")
-                
-                if name in support_types:
-                    temp_supports.append(name)
-                elif name == "beam":
-                    temp_beams.append(name)
-                elif name in load_types:
-                    temp_loads.append(name)
-            
-            # 有効な構造かチェック
-            if is_valid_structure(len(temp_supports), len(temp_beams), len(temp_loads)):
-                best_conf = trial_conf
-                best_result = res
-                break
-        
-        if best_conf is None:
-            st.error("❌ 解析可能な構造が検出できませんでした。画像を確認してください。")
-            st.stop()
-        
-        conf_th = best_conf
-        res = best_result
-        st.success(f"✅ 最適な検出信頼度: {conf_th:.2f}")
-        
-        # 閾値も自動調整（検出された要素数に応じて）
-        y_align_th = base_y_align_th
-        node_connect_th = base_node_connect_th
-else:
-    with st.spinner("画像認識中..."):
-        model = YOLO(MODEL_PATH)
-        res = model(img, conf=conf_th, imgsz=640)[0]
-        
-        # 手動モードでも画像サイズに応じた閾値を使用
-        y_align_th = base_y_align_th
-        node_connect_th = base_node_connect_th
+# 画像認識実行
+with st.spinner("画像認識中..."):
+    model = YOLO(MODEL_PATH)
+    res = model(img, conf=conf_th, imgsz=640)[0]
+    
+    # 固定閾値を使用
+    y_align_th = base_y_align_th
+    node_connect_th = base_node_connect_th
 
 obb = res.obb
 supports, beams, loads = [], [], []
@@ -454,43 +398,13 @@ for i in range(N):
     name = res.names[cls_id].lower().replace(" ", "")
     pts = to_numpy(obb.xyxyxyxy[i]).reshape(4, 2)
     pts = order_cw_start_top_left(pts)
-    # 角度計算
+    # 角度計算（シンプルな初期設定）
     if name in load_types:
-        # 荷重の場合：短辺の中点への方向を矢印の向きとする
-        # 4辺の長さを計算
-        edge_lengths = []
-        for j in range(4):
-            next_j = (j + 1) % 4
-            length = np.linalg.norm(pts[next_j] - pts[j])
-            edge_lengths.append((length, j, next_j))
-        
-        # 長さでソート
-        edge_lengths.sort()
-        
-        # 最も短い辺（短辺）の中点を計算
-        shortest_edge = edge_lengths[0]
-        p1 = pts[shortest_edge[1]]
-        p2 = pts[shortest_edge[2]]
-        short_edge_midpoint = (p1 + p2) / 2
-        
-        # ボックスの中心を計算
-        center = pts.mean(axis=0)
-        
-        # 中心から短辺の中点への方向を角度とする
-        angle_raw = math.degrees(math.atan2(short_edge_midpoint[1] - center[1], 
-                                            short_edge_midpoint[0] - center[0]))
-        
+        # 荷重の場合：ボックスの長辺方向を基準とする（シンプルな方法）
+        angle_raw = math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0]))
         # 0-360度に正規化
         if angle_raw < 0:
             angle_raw += 360
-        
-        # 短辺は2つあり、180度反対方向を向いている
-        # 斜めの荷重が-90度ずれているので、90度補正を追加
-        # ただし、270度と90度（上下方向）については補正しない
-        if not (45 <= angle_raw < 135 or 225 <= angle_raw < 315):
-            # 上下方向以外（斜めや左右）の場合のみ90度補正
-            angle_raw = (angle_raw + 90) % 360
-        
         # 15度刻みに丸める
         angle = round_angle_deg(angle_raw)
     elif name == "beam":
@@ -748,7 +662,7 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
-        # 荷重の向きを角度から直接計算
+        # 荷重の向きを角度から直接計算（シンプルな方法）
         # 0度=右、90度=下、180度=左、270度=上
         # 画像座標系: x右向き正、y下向き正
         angle_rad = np.deg2rad(angle)
@@ -828,15 +742,11 @@ for l in loads:
     else:  # moment
         tip = center
     
-    # 荷重の向きを角度から直接計算
+    # 荷重の向きを角度から直接計算（シンプルな方法）
     # 0度=右、90度=下、180度=左、270度=上
     # 画像座標系: x右向き正、y下向き正
     angle_rad = np.deg2rad(angle)
-    load_direction_initial = np.array([np.cos(angle_rad), np.sin(angle_rad)])
-    
-    # 梁との位置関係で向きを判定（上下方向の荷重の場合）
-    # まず最も近い梁を見つける必要があるので、ここでは初期方向を保存
-    load_direction = load_direction_initial
+    load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
     
     # 最も近い梁を探して、梁上に投影
     best_beam = None
@@ -919,27 +829,6 @@ for l in loads:
         # 投影点を更新
         best_proj = snapped_proj
         best_t = final_t
-        
-        # 梁との位置関係で荷重の向きを補正（上下方向の荷重の場合）
-        if best_beam is not None and load_type == "load":
-            # 荷重の中心が梁より上にあるか下にあるかを判定
-            beam_a = np.array(best_beam["node1_coord"])
-            beam_b = np.array(best_beam["node2_coord"])
-            beam_center_y = (beam_a[1] + beam_b[1]) / 2
-            load_center_y = center[1]
-            
-            # 上下方向の荷重（270度付近または90度付近）の場合のみ補正
-            if 225 <= angle < 315 or 45 <= angle < 135:
-                if load_center_y < beam_center_y:
-                    # 荷重が梁より上にある → 下向き荷重（ef_y正）
-                    if 225 <= angle < 315:  # 上向きとして検出されている場合
-                        angle = 90  # 下向きに補正
-                        load_direction = np.array([0, 1])
-                else:
-                    # 荷重が梁より下にある → 上向き荷重（ef_y負）
-                    if 45 <= angle < 135:  # 下向きとして検出されている場合
-                        angle = 270  # 上向きに補正
-                        load_direction = np.array([0, -1])
     else:
         load_node_idx = -1
         load_node_coord = tip
@@ -1135,8 +1024,8 @@ for l in load_connections:
     # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
-        # テンプレートの基準は下向き（90度）なので、angleから90度を引いた角度で回転
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle - 90)
+        # シンプルな回転：検出角度をそのまま使用
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
