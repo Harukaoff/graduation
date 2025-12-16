@@ -795,11 +795,11 @@ for l in loads:
                 if bbox_above_beam:
                     # バウンディングボックスが梁より上 → 下向き矢印（90度）
                     angle = 90
-                    load_direction = np.array([0, 1])  # 下向き
+                    load_direction = np.array([0, 1])  # 下向き（正の値）
                 else:
                     # バウンディングボックスが梁より下 → 上向き矢印（270度）
                     angle = 270
-                    load_direction = np.array([0, -1])  # 上向き
+                    load_direction = np.array([0, -1])  # 上向き（負の値）
             else:
                 # 梁が見つからない場合は基本方向を使用
                 load_direction = base_direction
@@ -943,11 +943,11 @@ for l in loads:
             if bbox_above_beam:
                 # バウンディングボックスが梁より上 → 下向き矢印（90度）
                 angle = 90
-                load_direction = np.array([0, 1])  # 下向き
+                load_direction = np.array([0, 1])  # 下向き（正の値）
             else:
                 # バウンディングボックスが梁より下 → 上向き矢印（270度）
                 angle = 270
-                load_direction = np.array([0, -1])  # 上向き
+                load_direction = np.array([0, -1])  # 上向き（負の値）
         else:
             # 梁が見つからない場合は基本方向を使用
             load_direction = base_direction
@@ -1353,8 +1353,10 @@ for l in load_connections:
             tpl_scaled = scale_image(tpl, scale)
             
             # テンプレートを軸の角度に回転
-            # テンプレートは右向き（0度）が基準なので、軸の角度をそのまま適用
-            tpl_rot = rotate_image_keep_alpha(tpl_scaled, axis_angle)
+            # テンプレートは下向き（90度）が基準なので、角度を調整
+            # 90度 → 0度回転、270度 → 180度回転、0度 → -90度回転、180度 → 90度回転
+            template_rotation = axis_angle - 90
+            tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
             # テンプレートの中心を軸の中心に配置
             cleaned = overlay_rgba(cleaned, tpl_rot, axis_center)
@@ -1373,12 +1375,16 @@ for l in load_connections:
             scale = min(scale_x, scale_y) * 0.8
             
             tpl_scaled = scale_image(tpl, scale)
-            tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+            # テンプレートは下向き（90度）が基準なので、角度を調整
+            template_rotation = angle - 90
+            tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
     elif tpl is not None:
         # フォールバック: 従来の方法
         tpl_scaled = scale_image(tpl, 0.9)
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+        # テンプレートは下向き（90度）が基準なので、角度を調整
+        template_rotation = angle - 90
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
