@@ -269,8 +269,9 @@ def get_rotated_arrow_tip(template, center, angle):
     offset_x = offset_col
     offset_y = offset_row
     
-    # 回転行列を適用（シンプルな方法：検出角度をそのまま使用）
-    theta = np.deg2rad(angle)
+    # 回転行列を適用（テンプレート基準角度を考慮）
+    # angleは既にテンプレート基準なので、90度を引いて実際の回転角度を計算
+    theta = np.deg2rad(angle - 90)
     
     # 標準的な回転行列（反時計回り）
     rot_matrix = np.array([
@@ -398,15 +399,20 @@ for i in range(N):
     name = res.names[cls_id].lower().replace(" ", "")
     pts = to_numpy(obb.xyxyxyxy[i]).reshape(4, 2)
     pts = order_cw_start_top_left(pts)
-    # 角度計算（シンプルな初期設定）
+    # 角度計算（テンプレート基準角度を考慮）
     if name in load_types:
-        # 荷重の場合：ボックスの長辺方向を基準とする（シンプルな方法）
+        # 荷重の場合：ボックスの長辺方向を基準とする
         angle_raw = math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0]))
         # 0-360度に正規化
         if angle_raw < 0:
             angle_raw += 360
+        
+        # テンプレートの基準は90度（下向き）なので、検出角度をテンプレート基準に変換
+        # 検出角度からテンプレート基準角度への変換
+        template_angle = (angle_raw + 90) % 360
+        
         # 15度刻みに丸める
-        angle = round_angle_deg(angle_raw)
+        angle = round_angle_deg(template_angle)
     elif name == "beam":
         # 梁の場合：長辺の方向
         angle = round_angle_deg(math.degrees(math.atan2(pts[2][1] - pts[0][1], pts[2][0] - pts[0][0])))
@@ -662,10 +668,11 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
-        # 荷重の向きを角度から直接計算（シンプルな方法）
-        # 0度=右、90度=下、180度=左、270度=上
-        # 画像座標系: x右向き正、y下向き正
-        angle_rad = np.deg2rad(angle)
+        # 荷重の向きを正しく計算（テンプレート基準角度を考慮）
+        # テンプレート基準: 0度=上、90度=右、180度=下、270度=左
+        # 実際の物理方向に変換: angle-90度が実際の方向
+        actual_angle = (angle - 90) % 360
+        angle_rad = np.deg2rad(actual_angle)
         load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
         
         # この範囲に重なる梁を探す
@@ -742,10 +749,11 @@ for l in loads:
     else:  # moment
         tip = center
     
-    # 荷重の向きを角度から直接計算（シンプルな方法）
-    # 0度=右、90度=下、180度=左、270度=上
-    # 画像座標系: x右向き正、y下向き正
-    angle_rad = np.deg2rad(angle)
+    # 荷重の向きを正しく計算（テンプレート基準角度を考慮）
+    # テンプレート基準: 0度=上、90度=右、180度=下、270度=左
+    # 実際の物理方向に変換: angle-90度が実際の方向
+    actual_angle = (angle - 90) % 360
+    angle_rad = np.deg2rad(actual_angle)
     load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
     
     # 最も近い梁を探して、梁上に投影
@@ -1024,8 +1032,10 @@ for l in load_connections:
     # 荷重テンプレートを配置（矢じりが梁上の接続点 proj に来るように）
     if tpl is not None:
         tpl_scaled = scale_image(tpl, 0.9)
-        # シンプルな回転：検出角度をそのまま使用
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+        # テンプレート回転：基準角度（90度）からの差分で回転
+        # angleは既にテンプレート基準なので、90度を引いて実際の回転角度を計算
+        rotation_angle = angle - 90
+        tpl_rot = rotate_image_keep_alpha(tpl_scaled, rotation_angle)
         
         # 回転後のテンプレート内の矢じり位置を取得
         h_rot, w_rot = tpl_rot.shape[:2]
