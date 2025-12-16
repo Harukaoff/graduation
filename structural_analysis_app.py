@@ -1354,8 +1354,8 @@ for l in load_connections:
             
             # テンプレートを軸の角度に回転
             # テンプレートは下向き（90度）が基準なので、角度を調整
-            # 90度 → 0度回転、270度 → 180度回転、0度 → -90度回転、180度 → 90度回転
-            template_rotation = axis_angle - 90
+            # 90度 → -90度回転、270度 → 90度回転、0度 → -180度回転、180度 → 0度回転
+            template_rotation = axis_angle - 180
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
             # テンプレートの中心を軸の中心に配置
@@ -1376,14 +1376,14 @@ for l in load_connections:
             
             tpl_scaled = scale_image(tpl, scale)
             # テンプレートは下向き（90度）が基準なので、角度を調整
-            template_rotation = angle - 90
+            template_rotation = angle - 180
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
     elif tpl is not None:
         # フォールバック: 従来の方法
         tpl_scaled = scale_image(tpl, 0.9)
         # テンプレートは下向き（90度）が基準なので、角度を調整
-        template_rotation = angle - 90
+        template_rotation = angle - 180
         tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
         
         # 回転後のテンプレート内の矢じり位置を取得
