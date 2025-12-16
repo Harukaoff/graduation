@@ -1239,30 +1239,63 @@ for l in load_connections:
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
     
-    # 荷重テンプレートを配置（バウンディングボックスの検出結果に合わせて）
+    # 荷重テンプレートを配置（検出された矢印軸に合わせて）
     if tpl is not None and "bbox_pts" in l:
-        # バウンディングボックス情報を直接使用
-        bbox_pts = np.array(l["bbox_pts"])
+        # 対応する荷重データから短辺中点情報を取得
+        load_data = None
         bbox_center = np.array(l["bbox_center"])
         
-        # バウンディングボックスのサイズを計算
-        bbox_width = np.max(bbox_pts[:, 0]) - np.min(bbox_pts[:, 0])
-        bbox_height = np.max(bbox_pts[:, 1]) - np.min(bbox_pts[:, 1])
+        # 荷重データから短辺中点を探す
+        for load in loads:
+            if "short_midpoints" in load:
+                load_center = load["pts"].mean(axis=0)
+                if np.linalg.norm(load_center - bbox_center) < 20:  # 中心が近い荷重を探す
+                    load_data = load
+                    break
         
-        # テンプレートをバウンディングボックスのサイズに合わせてスケール
-        tpl_h, tpl_w = tpl.shape[:2]
-        scale_x = bbox_width / tpl_w
-        scale_y = bbox_height / tpl_h
-        # アスペクト比を保持してスケール
-        scale = min(scale_x, scale_y) * 0.8  # バウンディングボックス内に収まるように調整
-        
-        tpl_scaled = scale_image(tpl, scale)
-        
-        # バウンディングボックスの角度で回転
-        tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
-        
-        # バウンディングボックスの中心にテンプレートを配置
-        cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
+        if load_data is not None and "short_midpoints" in load_data:
+            midpoint1, midpoint2 = load_data["short_midpoints"]
+            
+            # 矢印軸（短辺中点を結ぶ線）の計算
+            arrow_axis = midpoint2 - midpoint1
+            axis_length = np.linalg.norm(arrow_axis)
+            axis_center = (midpoint1 + midpoint2) / 2
+            
+            # 矢印軸の角度（検出された角度と同じ）
+            axis_angle = math.degrees(math.atan2(arrow_axis[1], arrow_axis[0]))
+            if axis_angle < 0:
+                axis_angle += 360
+            
+            # テンプレートのスケール（軸の長さに合わせる）
+            tpl_h, tpl_w = tpl.shape[:2]
+            # テンプレートは横向き（幅が軸の長さに対応）
+            scale = (axis_length / tpl_w) * 0.9  # 少し小さめに調整
+            
+            tpl_scaled = scale_image(tpl, scale)
+            
+            # テンプレートを軸の角度に回転
+            # テンプレートは右向き（0度）が基準なので、軸の角度をそのまま適用
+            tpl_rot = rotate_image_keep_alpha(tpl_scaled, axis_angle)
+            
+            # テンプレートの中心を軸の中心に配置
+            cleaned = overlay_rgba(cleaned, tpl_rot, axis_center)
+        else:
+            # 短辺中点情報がない場合のフォールバック
+            bbox_pts = np.array(l["bbox_pts"])
+            bbox_center = np.array(l["bbox_center"])
+            
+            # バウンディングボックスのサイズに合わせてスケール
+            bbox_width = np.max(bbox_pts[:, 0]) - np.min(bbox_pts[:, 0])
+            bbox_height = np.max(bbox_pts[:, 1]) - np.min(bbox_pts[:, 1])
+            
+            tpl_h, tpl_w = tpl.shape[:2]
+            scale_x = bbox_width / tpl_w
+            scale_y = bbox_height / tpl_h
+            scale = min(scale_x, scale_y) * 0.8
+            
+            tpl_scaled = scale_image(tpl, scale)
+            tpl_rot = rotate_image_keep_alpha(tpl_scaled, angle)
+            cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
     elif tpl is not None:
         # フォールバック: 従来の方法
         tpl_scaled = scale_image(tpl, 0.9)
