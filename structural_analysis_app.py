@@ -1375,7 +1375,7 @@ for l in load_connections:
             proj_coord = np.array(l["proj_coord"])
             
             # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
-            template_center = proj_coord - np.array([offset_x, offset_y])
+            template_center = proj_coord + np.array([offset_x, offset_y])
             
             cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
         else:
@@ -1413,7 +1413,7 @@ for l in load_connections:
             proj_coord = np.array(l["proj_coord"])
             
             # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
-            template_center = proj_coord - np.array([offset_x, offset_y])
+            template_center = proj_coord + np.array([offset_x, offset_y])
             
             cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
     elif tpl is not None:
@@ -1437,7 +1437,7 @@ for l in load_connections:
         
         # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
         proj_coord = np.array(l["proj_coord"])
-        template_center = proj_coord - np.array([offset_x, offset_y])
+        template_center = proj_coord + np.array([offset_x, offset_y])
         
         cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
 
