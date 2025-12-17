@@ -1358,8 +1358,26 @@ for l in load_connections:
             template_rotation = axis_angle - 180
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
-            # テンプレートの中心を軸の中心に配置
-            cleaned = overlay_rgba(cleaned, tpl_rot, axis_center)
+            # 矢じりを梁上の接続点に配置
+            # 回転後のテンプレート内の矢じり位置を取得
+            h_rot, w_rot = tpl_rot.shape[:2]
+            tip_local_rot = get_template_arrow_tip(tpl_rot)
+            
+            # テンプレート中心からのオフセット (row, col)
+            offset_row = tip_local_rot[0] - h_rot // 2
+            offset_col = tip_local_rot[1] - w_rot // 2
+            
+            # (x, y) 座標系に変換
+            offset_x = offset_col
+            offset_y = offset_row
+            
+            # 梁上の接続点を取得
+            proj_coord = np.array(l["proj_coord"])
+            
+            # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
+            template_center = proj_coord - np.array([offset_x, offset_y])
+            
+            cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
         else:
             # 短辺中点情報がない場合のフォールバック
             bbox_pts = np.array(l["bbox_pts"])
@@ -1378,7 +1396,26 @@ for l in load_connections:
             # テンプレートは下向き（90度）が基準なので、角度を調整
             template_rotation = angle - 180
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
-            cleaned = overlay_rgba(cleaned, tpl_rot, bbox_center)
+            
+            # 矢じりを梁上の接続点に配置
+            h_rot, w_rot = tpl_rot.shape[:2]
+            tip_local_rot = get_template_arrow_tip(tpl_rot)
+            
+            # テンプレート中心からのオフセット (row, col)
+            offset_row = tip_local_rot[0] - h_rot // 2
+            offset_col = tip_local_rot[1] - w_rot // 2
+            
+            # (x, y) 座標系に変換
+            offset_x = offset_col
+            offset_y = offset_row
+            
+            # 梁上の接続点を取得
+            proj_coord = np.array(l["proj_coord"])
+            
+            # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
+            template_center = proj_coord - np.array([offset_x, offset_y])
+            
+            cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
     elif tpl is not None:
         # フォールバック: 従来の方法
         tpl_scaled = scale_image(tpl, 0.9)
@@ -1398,8 +1435,9 @@ for l in load_connections:
         offset_x = offset_col
         offset_y = offset_row
         
-        # テンプレート中心位置を計算（矢じりが梁上の接続点 proj に来るように）
-        template_center = proj - np.array([offset_x, offset_y])
+        # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
+        proj_coord = np.array(l["proj_coord"])
+        template_center = proj_coord - np.array([offset_x, offset_y])
         
         cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
 
