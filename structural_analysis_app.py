@@ -808,9 +808,7 @@ for l in loads:
             beam_b = np.array(closest_beam["node2_coord"])
             beam_vector = beam_b - beam_a
             beam_length = np.linalg.norm(beam_vector)
-            
-            # 梁の中点に等分布荷重を配置（1つの矢印のみ）
-            udl_position = (beam_a + beam_b) / 2
+            beam_unit = beam_vector / beam_length
             
             # 梁に垂直な方向ベクトルを計算
             beam_perp = np.array([-beam_vector[1], beam_vector[0]]) / beam_length  # 垂直ベクトル
@@ -820,22 +818,44 @@ for l in loads:
             perp_angle = (beam_angle + 90) % 360
             
             # 荷重の向きを梁との位置関係とボックスの位置で決定
-            if box_center[1] < udl_position[1]:  # ボックスが梁より上
+            beam_center = (beam_a + beam_b) / 2
+            if box_center[1] < beam_center[1]:  # ボックスが梁より上
                 # 下向き荷重（梁に向かって）
                 angle = perp_angle
                 load_direction = np.array([np.cos(np.deg2rad(perp_angle)), np.sin(np.deg2rad(perp_angle))])
-                # udl_positionは梁の中点のまま（矢じりが梁上に来るように）
             else:  # ボックスが梁より下
                 # 上向き荷重（梁に向かって）
                 angle = (perp_angle + 180) % 360
                 load_direction = np.array([np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))])
-                # udl_positionは梁の中点のまま（矢じりが梁上に来るように）
             
             # 角度を15度刻みに丸める
             angle = round_angle_deg(angle)
+            
+            # バウンディングボックスの長辺の範囲に沿って複数の矢印位置を計算
+            # 梁の方向に沿って、バウンディングボックスの範囲内で等間隔に配置
+            # 矢印の間隔を決定（約50ピクセル間隔）
+            arrow_spacing = 50
+            num_arrows = max(3, int(udl_width / arrow_spacing))
+            
+            # 梁上でバウンディングボックスの範囲に対応する位置を計算
+            # バウンディングボックスの中心から梁への投影
+            t_center = np.dot(box_center - beam_a, beam_unit)
+            
+            # バウンディングボックスの幅の半分を梁方向に投影
+            half_width = udl_width / 2
+            t_start = max(0, min(beam_length, t_center - half_width))
+            t_end = max(0, min(beam_length, t_center + half_width))
+            
+            # 等間隔で矢印位置を計算
+            udl_positions = []
+            for i in range(num_arrows):
+                t = t_start + (t_end - t_start) * i / (num_arrows - 1) if num_arrows > 1 else t_center
+                pos = beam_a + t * beam_unit
+                udl_positions.append(pos)
+            
         else:
             # 梁が見つからない場合はボックス中心に配置
-            udl_position = box_center
+            udl_positions = [box_center]
             load_direction = np.array([0, 1])  # デフォルトは下向き
             angle = 90  # デフォルトは下向き
         
@@ -869,13 +889,11 @@ for l in loads:
                     })
         
         # 等分布荷重の接続情報を記録（表示用）
-        # 計算された位置を使用
-        display_coord = udl_position
-        
+        # 複数の矢印位置を保存
         load_connections.append({
             "type": load_type,
-            "tip_coord": udl_position.tolist(),
-            "proj_coord": display_coord.tolist() if isinstance(display_coord, np.ndarray) else display_coord,
+            "tip_coord": udl_positions[0].tolist() if udl_positions else box_center.tolist(),
+            "proj_coord": udl_positions[0].tolist() if udl_positions else box_center.tolist(),
             "node_idx": -1,
             "on_beam": udl_on_beams[-1]["beam_idx"] if udl_on_beams else -1,
             "beam_idx_in_list": -1,
@@ -889,7 +907,7 @@ for l in loads:
             "direction": load_direction.tolist(),
             "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
             "bbox_center": box_center.tolist(),  # バウンディングボックス中心を追加
-            "udl_arrow_position": udl_position.tolist(),  # 1つの矢印位置
+            "udl_arrow_positions": [pos.tolist() for pos in udl_positions],  # 複数の矢印位置
             "udl_width": udl_width,  # バウンディングボックスの長辺の長さ
             "closest_beam_angle": beam_angle if closest_beam else angle  # 梁の角度
         })
@@ -1336,11 +1354,12 @@ for l in load_connections:
     else:
         proj = np.array(l["proj_coord"])
     
-    # 等分布荷重の場合は1つの矢印を描画
-    if l.get("is_udl", False) and "udl_arrow_position" in l:
-        # 1つの矢印位置に円を描画
-        pos_array = np.array(l["udl_arrow_position"])
-        cv2.circle(cleaned, tuple(map(int, pos_array)), 5, (0, 0, 255), -1)
+    # 等分布荷重の場合は複数の矢印を描画
+    if l.get("is_udl", False) and "udl_arrow_positions" in l:
+        # 複数の矢印位置に円を描画
+        for pos in l["udl_arrow_positions"]:
+            pos_array = np.array(pos)
+            cv2.circle(cleaned, tuple(map(int, pos_array)), 5, (0, 0, 255), -1)
     elif not l.get("is_udl", False):
         # 集中荷重の場合、矢じり先端と梁上の点を線で接続
         # 接続線を描画（緑色の細線）
@@ -1354,18 +1373,10 @@ for l in load_connections:
     
     # 荷重テンプレートを配置
     if tpl is not None and "bbox_pts" in l:
-        # 等分布荷重の場合は1つの矢印を配置
-        if l.get("is_udl", False) and "udl_arrow_position" in l:
-            arrow_pos = np.array(l["udl_arrow_position"])
-            
-            # バウンディングボックスの長辺の長さに基づいてスケールを計算
-            udl_width = l.get("udl_width", 100)  # デフォルト100
-            # テンプレートの元の幅を基準にスケールを計算
-            base_template_width = tpl.shape[1]  # テンプレートの幅
-            scale_factor = udl_width / base_template_width
-            
-            # テンプレートをスケール
-            tpl_scaled = scale_image(tpl, scale_factor)
+        # 等分布荷重の場合は複数の矢印を配置
+        if l.get("is_udl", False) and "udl_arrow_positions" in l:
+            # 通常サイズのテンプレートを使用（個々の矢印は標準サイズ）
+            tpl_scaled = scale_image(tpl, 0.6)
             
             # 等分布荷重は梁に垂直に表示するため、angle + 90を使用
             # （angleは既に梁に垂直な角度として計算されている）
@@ -1382,14 +1393,18 @@ for l in load_connections:
             offset_x = offset_col
             offset_y = offset_row
             
-            # 角度に応じてオフセットの符号を調整
-            # 下向き（45-135度）の場合はマイナス、それ以外はプラス
-            if 45 <= angle <= 135:  # 下向き矢印
-                template_center = arrow_pos - np.array([offset_x, offset_y])
-            else:  # その他の角度
-                template_center = arrow_pos + np.array([offset_x, offset_y])
-            
-            cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
+            # 複数の矢印位置に対してテンプレートを配置
+            for arrow_pos in l["udl_arrow_positions"]:
+                arrow_pos_array = np.array(arrow_pos)
+                
+                # 角度に応じてオフセットの符号を調整
+                # 下向き（45-135度）の場合はマイナス、それ以外はプラス
+                if 45 <= angle <= 135:  # 下向き矢印
+                    template_center = arrow_pos_array - np.array([offset_x, offset_y])
+                else:  # その他の角度
+                    template_center = arrow_pos_array + np.array([offset_x, offset_y])
+                
+                cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
         
         # 集中荷重の場合の処理
         elif not l.get("is_udl", False):
