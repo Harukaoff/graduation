@@ -492,14 +492,21 @@ for i in range(N):
         short_midpoint2 = (p2_1 + p2_2) / 2
         
         # 2つの短辺の中点を結んだ線が矢印の軸
+        # まず仮の角度を計算（どちら向きかは後で梁との位置関係で決定）
         arrow_axis = short_midpoint2 - short_midpoint1
         angle_raw = math.degrees(math.atan2(arrow_axis[1], arrow_axis[0]))
         
         # 0-360度に正規化
         if angle_raw < 0:
             angle_raw += 360
+        
         # 15度刻みに丸める
         angle = round_angle_deg(angle_raw)
+        
+        # 角度の候補は2つ（180度反対方向）
+        # 後で梁との位置関係で正しい向きを決定するため、両方を保存
+        angle_candidate1 = angle
+        angle_candidate2 = (angle + 180) % 360
         
         # 矢じり位置の決定（梁に近い側の短辺中点）
         # 後で梁との距離を計算して決定するため、両方の中点を保存
@@ -525,6 +532,9 @@ for i in range(N):
         # 短辺中点情報を追加
         if 'load_short_midpoints' in locals():
             load_data["short_midpoints"] = load_short_midpoints
+        # 角度の候補を追加（180度反対方向も含む）
+        if 'angle_candidate1' in locals() and 'angle_candidate2' in locals():
+            load_data["angle_candidates"] = (angle_candidate1, angle_candidate2)
         loads.append(load_data)
 
 nodes = np.array([s["node"] for s in supports]) if supports else np.empty((0, 2))
@@ -926,51 +936,51 @@ for l in loads:
         tip = center
     
     # 荷重の向きを梁との位置関係で決定
-    # まず基本的な角度から方向を計算
-    angle_rad = np.deg2rad(angle)
-    base_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
-    
-    # 上下方向の矢印（270度付近または90度付近）の場合、梁との位置関係で向きを決定
-    if 225 <= angle <= 315 or 45 <= angle <= 135:
-        # バウンディングボックスの位置を取得
-        bbox_pts = l["pts"]
-        bbox_y_min = np.min(bbox_pts[:, 1])
-        bbox_y_max = np.max(bbox_pts[:, 1])
-        bbox_y_center = (bbox_y_min + bbox_y_max) / 2
+    # 角度候補がある場合は、梁に向かう方向を選択
+    if "angle_candidates" in l:
+        angle_candidate1, angle_candidate2 = l["angle_candidates"]
         
-        # 最も近い梁のy座標を取得
-        closest_beam_y = None
+        # 最も近い梁を見つける
+        bbox_center = l["pts"].mean(axis=0)
+        closest_beam_center = None
         min_dist_to_beam = float('inf')
         
         for beam in beam_connections:
             beam_a = np.array(beam["node1_coord"])
             beam_b = np.array(beam["node2_coord"])
-            beam_y_center = (beam_a[1] + beam_b[1]) / 2
+            beam_center = (beam_a + beam_b) / 2
+            dist = np.linalg.norm(bbox_center - beam_center)
             
-            # バウンディングボックス中心から梁中心までの距離
-            dist = abs(bbox_y_center - beam_y_center)
             if dist < min_dist_to_beam:
                 min_dist_to_beam = dist
-                closest_beam_y = beam_y_center
+                closest_beam_center = beam_center
         
-        if closest_beam_y is not None:
-            # バウンディングボックスの大部分が梁より上にあるか下にあるかを判定
-            bbox_above_beam = bbox_y_center < closest_beam_y  # y座標は下向きが正
+        if closest_beam_center is not None:
+            # バウンディングボックスから梁への方向ベクトル
+            to_beam = closest_beam_center - bbox_center
+            to_beam_angle = math.degrees(math.atan2(to_beam[1], to_beam[0]))
+            if to_beam_angle < 0:
+                to_beam_angle += 360
             
-            if bbox_above_beam:
-                # バウンディングボックスが梁より上 → 下向き矢印（90度）
-                angle = 90
-                load_direction = np.array([0, 1])  # 下向き（正の値）
+            # 2つの角度候補のうち、梁に向かう方向に近い方を選択
+            diff1 = abs(angle_candidate1 - to_beam_angle)
+            diff2 = abs(angle_candidate2 - to_beam_angle)
+            
+            # 角度差を0-180度の範囲に正規化
+            if diff1 > 180:
+                diff1 = 360 - diff1
+            if diff2 > 180:
+                diff2 = 360 - diff2
+            
+            # より近い角度を選択
+            if diff1 < diff2:
+                angle = angle_candidate1
             else:
-                # バウンディングボックスが梁より下 → 上向き矢印（270度）
-                angle = 270
-                load_direction = np.array([0, -1])  # 上向き（負の値）
-        else:
-            # 梁が見つからない場合は基本方向を使用
-            load_direction = base_direction
-    else:
-        # 左右方向や斜め方向の場合は基本方向を使用
-        load_direction = base_direction
+                angle = angle_candidate2
+    
+    # 角度から方向ベクトルを計算
+    angle_rad = np.deg2rad(angle)
+    load_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
     
     # 最も近い梁を探して、梁上に投影
     best_beam = None
