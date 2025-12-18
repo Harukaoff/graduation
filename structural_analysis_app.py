@@ -880,7 +880,7 @@ for l in loads:
             "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
             "bbox_center": box_center.tolist(),  # バウンディングボックス中心を追加
             "udl_arrow_position": udl_position.tolist(),  # 1つの矢印位置
-            "udl_width": udl_width  # バウンディングボックスの長辺の長さ
+            "udl_width": udl_width,  # バウンディングボックスの長辺の長さ
             "closest_beam_angle": beam_angle if closest_beam else angle  # 梁の角度
         })
         continue
