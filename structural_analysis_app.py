@@ -815,50 +815,7 @@ for l in loads:
             # 梁が見つからない場合はボックス中心に配置
             udl_position = box_center
             load_direction = np.array([0, 1])  # デフォルトは下向き
-        
-        # 荷重の向きを梁との位置関係で決定
-        # まず基本的な角度から方向を計算
-        angle_rad = np.deg2rad(angle)
-        base_direction = np.array([np.cos(angle_rad), np.sin(angle_rad)])
-        
-        # 上下方向の矢印（270度付近または90度付近）の場合、梁との位置関係で向きを決定
-        if 225 <= angle <= 315 or 45 <= angle <= 135:
-            # バウンディングボックスの位置を取得
-            bbox_y_center = (y_min + y_max) / 2
-            
-            # 最も近い梁のy座標を取得
-            closest_beam_y = None
-            min_dist_to_beam = float('inf')
-            
-            for beam in beam_connections:
-                beam_a = np.array(beam["node1_coord"])
-                beam_b = np.array(beam["node2_coord"])
-                beam_y_center = (beam_a[1] + beam_b[1]) / 2
-                
-                # バウンディングボックス中心から梁中心までの距離
-                dist = abs(bbox_y_center - beam_y_center)
-                if dist < min_dist_to_beam:
-                    min_dist_to_beam = dist
-                    closest_beam_y = beam_y_center
-            
-            if closest_beam_y is not None:
-                # バウンディングボックスの大部分が梁より上にあるか下にあるかを判定
-                bbox_above_beam = bbox_y_center < closest_beam_y  # y座標は下向きが正
-                
-                if bbox_above_beam:
-                    # バウンディングボックスが梁より上 → 下向き矢印（90度）
-                    angle = 90
-                    load_direction = np.array([0, 1])  # 下向き（正の値）
-                else:
-                    # バウンディングボックスが梁より下 → 上向き矢印（270度）
-                    angle = 270
-                    load_direction = np.array([0, -1])  # 上向き（負の値）
-            else:
-                # 梁が見つからない場合は基本方向を使用
-                load_direction = base_direction
-        else:
-            # 左右方向や斜め方向の場合は基本方向を使用
-            load_direction = base_direction
+            angle = 90  # デフォルトは下向き
         
         # この範囲に重なる梁を探す
         for idx, beam in enumerate(beam_connections):
@@ -1396,7 +1353,8 @@ for l in load_connections:
             offset_y = offset_row
             
             # 角度に応じてオフセットの符号を調整
-            if angle == 90:  # 下向き矢印
+            # 下向き（45-135度）の場合はマイナス、それ以外はプラス
+            if 45 <= angle <= 135:  # 下向き矢印
                 template_center = arrow_pos - np.array([offset_x, offset_y])
             else:  # その他の角度
                 template_center = arrow_pos + np.array([offset_x, offset_y])
