@@ -780,8 +780,6 @@ for l in loads:
         # 最も近い梁の角度に合わせる
         if closest_beam is not None:
             beam_angle = closest_beam["angle"]
-            # 梁の角度に合わせて等分布荷重の角度を調整
-            angle = beam_angle
             
             # 梁の方向ベクトルを計算
             beam_a = np.array(closest_beam["node1_coord"])
@@ -792,20 +790,27 @@ for l in loads:
             # 梁の中点に等分布荷重を配置（1つの矢印のみ）
             udl_position = (beam_a + beam_b) / 2
             
-            # 梁に垂直な方向にオフセット（荷重の向きに応じて）
+            # 梁に垂直な方向ベクトルを計算
             beam_perp = np.array([-beam_vector[1], beam_vector[0]]) / beam_length  # 垂直ベクトル
             
-            # 荷重の向きを梁との位置関係で決定
+            # 等分布荷重は梁に垂直な方向を向く
+            # 梁の角度に90度を加えて垂直方向の角度を計算
+            perp_angle = (beam_angle + 90) % 360
+            
+            # 荷重の向きを梁との位置関係とボックスの位置で決定
             if box_center[1] < udl_position[1]:  # ボックスが梁より上
-                # 下向き荷重
-                angle = 90
-                load_direction = np.array([0, 1])
+                # 下向き荷重（梁に向かって）
+                angle = perp_angle
+                load_direction = np.array([np.cos(np.deg2rad(perp_angle)), np.sin(np.deg2rad(perp_angle))])
                 udl_position = udl_position - beam_perp * 30  # 梁の上側に配置
             else:  # ボックスが梁より下
-                # 上向き荷重
-                angle = 270
-                load_direction = np.array([0, -1])
+                # 上向き荷重（梁に向かって）
+                angle = (perp_angle + 180) % 360
+                load_direction = np.array([np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))])
                 udl_position = udl_position + beam_perp * 30  # 梁の下側に配置
+            
+            # 角度を15度刻みに丸める
+            angle = round_angle_deg(angle)
         else:
             # 梁が見つからない場合はボックス中心に配置
             udl_position = box_center
@@ -1743,7 +1748,8 @@ with st.expander("🔍 検出詳細情報"):
             x_range = l.get('x_range', (0, 0))
             direction = l.get('direction', [0, 0])
             dir_str = f"方向: ({direction[0]:.1f}, {direction[1]:.1f})"
-            st.write(f"{l['type']}: x範囲 [{x_range[0]:.1f}, {x_range[1]:.1f}], 角度: {l['angle']:.0f}°, {dir_str}")
+            beam_angle = l.get('closest_beam_angle', 'N/A')
+            st.write(f"{l['type']}: x範囲 [{x_range[0]:.1f}, {x_range[1]:.1f}], 角度: {l['angle']:.0f}°, 梁角度: {beam_angle}°, {dir_str}")
         else:
             # 集中荷重・モーメント荷重
             split_info = " [梁を分割]" if l.get('needs_split', False) else ""
