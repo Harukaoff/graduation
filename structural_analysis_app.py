@@ -1805,11 +1805,11 @@ with st.expander("🔍 検出詳細情報"):
     for l in load_connections:
         if l.get('is_udl', False):
             # 等分布荷重
-            x_range = l.get('x_range', (0, 0))
             direction = l.get('direction', [0, 0])
             dir_str = f"方向: ({direction[0]:.1f}, {direction[1]:.1f})"
             beam_angle = l.get('closest_beam_angle', 'N/A')
-            st.write(f"{l['type']}: x範囲 [{x_range[0]:.1f}, {x_range[1]:.1f}], 角度: {l['angle']:.0f}°, 梁角度: {beam_angle}°, {dir_str}")
+            num_arrows = len(l.get('udl_arrow_positions', []))
+            st.write(f"{l['type']}: 矢印数={num_arrows}, 角度: {l['angle']:.0f}°, 梁角度: {beam_angle}°, {dir_str}")
         else:
             # 集中荷重・モーメント荷重
             split_info = " [梁を分割]" if l.get('needs_split', False) else ""
@@ -1823,8 +1823,9 @@ with st.expander("🔍 検出詳細情報"):
             beam_idx = udl["beam_idx"]
             load_val = udl["load_value"]
             direction = udl["direction"]
-            x_range = udl["x_range"]
-            st.write(f"梁{beam_idx}: 荷重値={load_val:.1f}, 方向=({direction[0]:.1f}, {direction[1]:.1f}), x範囲=[{x_range[0]:.1f}, {x_range[1]:.1f}]")
+            t_start = udl.get("t_start", 0)
+            t_end = udl.get("t_end", 1)
+            st.write(f"梁{beam_idx}: 荷重値={load_val:.1f}, 方向=({direction[0]:.1f}, {direction[1]:.1f}), 範囲=t[{t_start:.2f}, {t_end:.2f}]")
     
     st.write(f"\n**節点一覧**")
     for i, (node, info) in enumerate(zip(all_nodes, node_info)):
