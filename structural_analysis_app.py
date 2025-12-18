@@ -1393,106 +1393,108 @@ for l in load_connections:
         
         # 集中荷重の場合の処理
         elif not l.get("is_udl", False):
-        # 対応する荷重データから短辺中点情報を取得
-        load_data = None
-        bbox_center = np.array(l["bbox_center"])
-        
-        # 荷重データから短辺中点を探す
-        for load in loads:
-            if "short_midpoints" in load:
-                load_center = load["pts"].mean(axis=0)
-                if np.linalg.norm(load_center - bbox_center) < 20:  # 中心が近い荷重を探す
-                    load_data = load
-                    break
-        
-        if load_data is not None and "short_midpoints" in load_data:
-            midpoint1, midpoint2 = load_data["short_midpoints"]
-            
-            # 矢印軸（短辺中点を結ぶ線）の計算
-            arrow_axis = midpoint2 - midpoint1
-            axis_length = np.linalg.norm(arrow_axis)
-            axis_center = (midpoint1 + midpoint2) / 2
-            
-            # 矢印軸の角度（梁との位置関係で修正された角度を使用）
-            axis_angle = angle  # 既に梁との位置関係で修正済みの角度
-            
-            # テンプレートのスケール（軸の長さに合わせる）
-            tpl_h, tpl_w = tpl.shape[:2]
-            # テンプレートは横向き（幅が軸の長さに対応）
-            scale = (axis_length / tpl_w) * 0.9  # 少し小さめに調整
-            
-            tpl_scaled = scale_image(tpl, scale)
-            
-            # テンプレートを軸の角度に回転
-            # テンプレートは下向き（90度）が基準なので、角度を調整
-            # 90度 → -90度回転、270度 → 90度回転、0度 → -180度回転、180度 → 0度回転
-            template_rotation = axis_angle - 180
-            tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
-            
-            # 矢じりを梁上の接続点に配置
-            # 回転後のテンプレート内の矢じり位置を取得
-            h_rot, w_rot = tpl_rot.shape[:2]
-            tip_local_rot = get_template_arrow_tip(tpl_rot)
-            
-            # テンプレート中心からのオフセット (row, col)
-            offset_row = tip_local_rot[0] - h_rot // 2
-            offset_col = tip_local_rot[1] - w_rot // 2
-            
-            # (x, y) 座標系に変換
-            offset_x = offset_col
-            offset_y = offset_row
-            
-            # 梁上の接続点を取得
-            proj_coord = np.array(l["proj_coord"])
-            
-            # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
-            # 角度に応じてオフセットの符号を調整
-            if axis_angle == 90:  # 下向き矢印
-                template_center = proj_coord - np.array([offset_x, offset_y])
-            else:  # その他の角度（上向き、左右など）
-                template_center = proj_coord + np.array([offset_x, offset_y])
-            
-            cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
-        else:
-            # 短辺中点情報がない場合のフォールバック
-            bbox_pts = np.array(l["bbox_pts"])
+            # 対応する荷重データから短辺中点情報を取得
+            load_data = None
             bbox_center = np.array(l["bbox_center"])
             
-            # バウンディングボックスのサイズに合わせてスケール
-            bbox_width = np.max(bbox_pts[:, 0]) - np.min(bbox_pts[:, 0])
-            bbox_height = np.max(bbox_pts[:, 1]) - np.min(bbox_pts[:, 1])
+            # 荷重データから短辺中点を探す
+            for load in loads:
+                if "short_midpoints" in load:
+                    load_center = load["pts"].mean(axis=0)
+                    if np.linalg.norm(load_center - bbox_center) < 20:  # 中心が近い荷重を探す
+                        load_data = load
+                        break
             
-            tpl_h, tpl_w = tpl.shape[:2]
-            scale_x = bbox_width / tpl_w
-            scale_y = bbox_height / tpl_h
-            scale = min(scale_x, scale_y) * 0.8
-            
-            tpl_scaled = scale_image(tpl, scale)
-            # テンプレートは下向き（90度）が基準なので、角度を調整
-            template_rotation = angle - 180
-            tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
-            
-            # 矢じりを梁上の接続点に配置
-            h_rot, w_rot = tpl_rot.shape[:2]
-            tip_local_rot = get_template_arrow_tip(tpl_rot)
-            
-            # テンプレート中心からのオフセット (row, col)
-            offset_row = tip_local_rot[0] - h_rot // 2
-            offset_col = tip_local_rot[1] - w_rot // 2
-            
-            # (x, y) 座標系に変換
-            offset_x = offset_col
-            offset_y = offset_row
-            
-            # 梁上の接続点を取得
-            proj_coord = np.array(l["proj_coord"])
-            
-            # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
-            # 角度に応じてオフセットの符号を調整
-            if angle == 90:  # 下向き矢印
-                template_center = proj_coord - np.array([offset_x, offset_y])
-            else:  # その他の角度（上向き、左右など）
-                template_center = proj_coord + np.array([offset_x, offset_y])
+            if load_data is not None and "short_midpoints" in load_data:
+                midpoint1, midpoint2 = load_data["short_midpoints"]
+                
+                # 矢印軸（短辺中点を結ぶ線）の計算
+                arrow_axis = midpoint2 - midpoint1
+                axis_length = np.linalg.norm(arrow_axis)
+                axis_center = (midpoint1 + midpoint2) / 2
+                
+                # 矢印軸の角度（梁との位置関係で修正された角度を使用）
+                axis_angle = angle  # 既に梁との位置関係で修正済みの角度
+                
+                # テンプレートのスケール（軸の長さに合わせる）
+                tpl_h, tpl_w = tpl.shape[:2]
+                # テンプレートは横向き（幅が軸の長さに対応）
+                scale = (axis_length / tpl_w) * 0.9  # 少し小さめに調整
+                
+                tpl_scaled = scale_image(tpl, scale)
+                
+                # テンプレートを軸の角度に回転
+                # テンプレートは下向き（90度）が基準なので、角度を調整
+                # 90度 → -90度回転、270度 → 90度回転、0度 → -180度回転、180度 → 0度回転
+                template_rotation = axis_angle - 180
+                tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
+                
+                # 矢じりを梁上の接続点に配置
+                # 回転後のテンプレート内の矢じり位置を取得
+                h_rot, w_rot = tpl_rot.shape[:2]
+                tip_local_rot = get_template_arrow_tip(tpl_rot)
+                
+                # テンプレート中心からのオフセット (row, col)
+                offset_row = tip_local_rot[0] - h_rot // 2
+                offset_col = tip_local_rot[1] - w_rot // 2
+                
+                # (x, y) 座標系に変換
+                offset_x = offset_col
+                offset_y = offset_row
+                
+                # 梁上の接続点を取得
+                proj_coord = np.array(l["proj_coord"])
+                
+                # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
+                # 角度に応じてオフセットの符号を調整
+                if axis_angle == 90:  # 下向き矢印
+                    template_center = proj_coord - np.array([offset_x, offset_y])
+                else:  # その他の角度（上向き、左右など）
+                    template_center = proj_coord + np.array([offset_x, offset_y])
+                
+                cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
+            else:
+                # 短辺中点情報がない場合のフォールバック
+                bbox_pts = np.array(l["bbox_pts"])
+                bbox_center = np.array(l["bbox_center"])
+                
+                # バウンディングボックスのサイズに合わせてスケール
+                bbox_width = np.max(bbox_pts[:, 0]) - np.min(bbox_pts[:, 0])
+                bbox_height = np.max(bbox_pts[:, 1]) - np.min(bbox_pts[:, 1])
+                
+                tpl_h, tpl_w = tpl.shape[:2]
+                scale_x = bbox_width / tpl_w
+                scale_y = bbox_height / tpl_h
+                scale = min(scale_x, scale_y) * 0.8
+                
+                tpl_scaled = scale_image(tpl, scale)
+                # テンプレートは下向き（90度）が基準なので、角度を調整
+                template_rotation = angle - 180
+                tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
+                
+                # 矢じりを梁上の接続点に配置
+                h_rot, w_rot = tpl_rot.shape[:2]
+                tip_local_rot = get_template_arrow_tip(tpl_rot)
+                
+                # テンプレート中心からのオフセット (row, col)
+                offset_row = tip_local_rot[0] - h_rot // 2
+                offset_col = tip_local_rot[1] - w_rot // 2
+                
+                # (x, y) 座標系に変換
+                offset_x = offset_col
+                offset_y = offset_row
+                
+                # 梁上の接続点を取得
+                proj_coord = np.array(l["proj_coord"])
+                
+                # テンプレート中心位置を計算（矢じりが梁上の接続点に来るように）
+                # 角度に応じてオフセットの符号を調整
+                if angle == 90:  # 下向き矢印
+                    template_center = proj_coord - np.array([offset_x, offset_y])
+                else:  # その他の角度（上向き、左右など）
+                    template_center = proj_coord + np.array([offset_x, offset_y])
+                
+                cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
             
             cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
     elif tpl is not None:
