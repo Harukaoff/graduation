@@ -802,12 +802,12 @@ for l in loads:
                 # 下向き荷重（梁に向かって）
                 angle = perp_angle
                 load_direction = np.array([np.cos(np.deg2rad(perp_angle)), np.sin(np.deg2rad(perp_angle))])
-                udl_position = udl_position - beam_perp * 30  # 梁の上側に配置
+                # udl_positionは梁の中点のまま（矢じりが梁上に来るように）
             else:  # ボックスが梁より下
                 # 上向き荷重（梁に向かって）
                 angle = (perp_angle + 180) % 360
                 load_direction = np.array([np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))])
-                udl_position = udl_position + beam_perp * 30  # 梁の下側に配置
+                # udl_positionは梁の中点のまま（矢じりが梁上に来るように）
             
             # 角度を15度刻みに丸める
             angle = round_angle_deg(angle)
