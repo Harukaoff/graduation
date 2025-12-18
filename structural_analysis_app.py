@@ -763,35 +763,53 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
-        # 長辺を特定（幅と高さを比較）
-        box_width = x_max - x_min
-        box_height = y_max - y_min
+        # 最も近い梁を見つけて角度を合わせる
+        closest_beam = None
+        min_dist_to_beam = float('inf')
         
-        # 長辺の中点を計算
-        if box_width > box_height:
-            # 横長の場合：上下の辺が長辺
-            long_edge_midpoints = [
-                np.array([(x_min + x_max) / 2, y_min]),  # 上辺の中点
-                np.array([(x_min + x_max) / 2, y_max])   # 下辺の中点
-            ]
-            # 4等分点も計算
-            quarter_points = [
-                np.array([x_min + box_width * 0.25, (y_min + y_max) / 2]),
-                np.array([x_min + box_width * 0.5, (y_min + y_max) / 2]),
-                np.array([x_min + box_width * 0.75, (y_min + y_max) / 2])
-            ]
+        for beam in beam_connections:
+            beam_a = np.array(beam["node1_coord"])
+            beam_b = np.array(beam["node2_coord"])
+            beam_center = (beam_a + beam_b) / 2
+            dist_to_box = np.linalg.norm(beam_center - box_center)
+            
+            if dist_to_box < min_dist_to_beam:
+                min_dist_to_beam = dist_to_box
+                closest_beam = beam
+        
+        # 最も近い梁の角度に合わせる
+        if closest_beam is not None:
+            beam_angle = closest_beam["angle"]
+            # 梁の角度に合わせて等分布荷重の角度を調整
+            angle = beam_angle
+            
+            # 梁の方向ベクトルを計算
+            beam_a = np.array(closest_beam["node1_coord"])
+            beam_b = np.array(closest_beam["node2_coord"])
+            beam_vector = beam_b - beam_a
+            beam_length = np.linalg.norm(beam_vector)
+            
+            # 梁の中点に等分布荷重を配置（1つの矢印のみ）
+            udl_position = (beam_a + beam_b) / 2
+            
+            # 梁に垂直な方向にオフセット（荷重の向きに応じて）
+            beam_perp = np.array([-beam_vector[1], beam_vector[0]]) / beam_length  # 垂直ベクトル
+            
+            # 荷重の向きを梁との位置関係で決定
+            if box_center[1] < udl_position[1]:  # ボックスが梁より上
+                # 下向き荷重
+                angle = 90
+                load_direction = np.array([0, 1])
+                udl_position = udl_position - beam_perp * 30  # 梁の上側に配置
+            else:  # ボックスが梁より下
+                # 上向き荷重
+                angle = 270
+                load_direction = np.array([0, -1])
+                udl_position = udl_position + beam_perp * 30  # 梁の下側に配置
         else:
-            # 縦長の場合：左右の辺が長辺
-            long_edge_midpoints = [
-                np.array([x_min, (y_min + y_max) / 2]),  # 左辺の中点
-                np.array([x_max, (y_min + y_max) / 2])   # 右辺の中点
-            ]
-            # 4等分点も計算
-            quarter_points = [
-                np.array([(x_min + x_max) / 2, y_min + box_height * 0.25]),
-                np.array([(x_min + x_max) / 2, y_min + box_height * 0.5]),
-                np.array([(x_min + x_max) / 2, y_min + box_height * 0.75])
-            ]
+            # 梁が見つからない場合はボックス中心に配置
+            udl_position = box_center
+            load_direction = np.array([0, 1])  # デフォルトは下向き
         
         # 荷重の向きを梁との位置関係で決定
         # まず基本的な角度から方向を計算
@@ -867,20 +885,12 @@ for l in loads:
                     })
         
         # 等分布荷重の接続情報を記録（表示用）
-        # 最も近い梁の中点に表示位置を設定
-        display_coord = box_center
-        if udl_on_beams:
-            # 最初に見つかった梁の中点を使用
-            first_beam_idx = udl_on_beams[-1]["beam_idx"]
-            if first_beam_idx < len(beam_connections):
-                beam = beam_connections[first_beam_idx]
-                a = np.array(beam["node1_coord"])
-                b = np.array(beam["node2_coord"])
-                display_coord = (a + b) / 2  # 梁の中点
+        # 計算された位置を使用
+        display_coord = udl_position
         
         load_connections.append({
             "type": load_type,
-            "tip_coord": box_center.tolist(),
+            "tip_coord": udl_position.tolist(),
             "proj_coord": display_coord.tolist() if isinstance(display_coord, np.ndarray) else display_coord,
             "node_idx": -1,
             "on_beam": udl_on_beams[-1]["beam_idx"] if udl_on_beams else -1,
@@ -895,8 +905,8 @@ for l in loads:
             "direction": load_direction.tolist(),
             "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
             "bbox_center": box_center.tolist(),  # バウンディングボックス中心を追加
-            "udl_arrow_positions": [pos.tolist() for pos in quarter_points],  # 矢印配置位置
-            "udl_long_edge_midpoints": [pos.tolist() for pos in long_edge_midpoints]  # 長辺中点
+            "udl_arrow_position": udl_position.tolist(),  # 1つの矢印位置
+            "closest_beam_angle": beam_angle if closest_beam else angle  # 梁の角度
         })
         continue
     
@@ -1341,12 +1351,11 @@ for l in load_connections:
     else:
         proj = np.array(l["proj_coord"])
     
-    # 等分布荷重の場合は複数の矢印を描画
-    if l.get("is_udl", False) and "udl_arrow_positions" in l:
-        # 複数の矢印位置に小さな円を描画
-        for pos in l["udl_arrow_positions"]:
-            pos_array = np.array(pos)
-            cv2.circle(cleaned, tuple(map(int, pos_array)), 4, (0, 0, 255), -1)
+    # 等分布荷重の場合は1つの矢印を描画
+    if l.get("is_udl", False) and "udl_arrow_position" in l:
+        # 1つの矢印位置に円を描画
+        pos_array = np.array(l["udl_arrow_position"])
+        cv2.circle(cleaned, tuple(map(int, pos_array)), 5, (0, 0, 255), -1)
     elif not l.get("is_udl", False):
         # 集中荷重の場合、矢じり先端と梁上の点を線で接続
         # 接続線を描画（緑色の細線）
@@ -1360,36 +1369,34 @@ for l in load_connections:
     
     # 荷重テンプレートを配置
     if tpl is not None and "bbox_pts" in l:
-        # 等分布荷重の場合は複数の矢印を配置
-        if l.get("is_udl", False) and "udl_arrow_positions" in l:
-            arrow_positions = [np.array(pos) for pos in l["udl_arrow_positions"]]
+        # 等分布荷重の場合は1つの矢印を配置
+        if l.get("is_udl", False) and "udl_arrow_position" in l:
+            arrow_pos = np.array(l["udl_arrow_position"])
             
-            # 各矢印位置にテンプレートを配置
-            for arrow_pos in arrow_positions:
-                # テンプレートのスケール（小さめに）
-                tpl_scaled = scale_image(tpl, 0.6)
-                
-                # テンプレートを角度で回転
-                template_rotation = angle - 180
-                tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
-                
-                # 矢じりを矢印位置に配置
-                h_rot, w_rot = tpl_rot.shape[:2]
-                tip_local_rot = get_template_arrow_tip(tpl_rot)
-                
-                # テンプレート中心からのオフセット
-                offset_row = tip_local_rot[0] - h_rot // 2
-                offset_col = tip_local_rot[1] - w_rot // 2
-                offset_x = offset_col
-                offset_y = offset_row
-                
-                # 角度に応じてオフセットの符号を調整
-                if angle == 90:  # 下向き矢印
-                    template_center = arrow_pos - np.array([offset_x, offset_y])
-                else:  # その他の角度
-                    template_center = arrow_pos + np.array([offset_x, offset_y])
-                
-                cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
+            # テンプレートのスケール（通常サイズ）
+            tpl_scaled = scale_image(tpl, 0.8)
+            
+            # テンプレートを角度で回転
+            template_rotation = angle - 180
+            tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
+            
+            # 矢じりを矢印位置に配置
+            h_rot, w_rot = tpl_rot.shape[:2]
+            tip_local_rot = get_template_arrow_tip(tpl_rot)
+            
+            # テンプレート中心からのオフセット
+            offset_row = tip_local_rot[0] - h_rot // 2
+            offset_col = tip_local_rot[1] - w_rot // 2
+            offset_x = offset_col
+            offset_y = offset_row
+            
+            # 角度に応じてオフセットの符号を調整
+            if angle == 90:  # 下向き矢印
+                template_center = arrow_pos - np.array([offset_x, offset_y])
+            else:  # その他の角度
+                template_center = arrow_pos + np.array([offset_x, offset_y])
+            
+            cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
         
         # 集中荷重の場合の処理
         elif not l.get("is_udl", False):
