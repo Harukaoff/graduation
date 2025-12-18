@@ -755,13 +755,43 @@ for l in loads:
     
     # 等分布荷重の場合は特別処理
     if load_type == "udl":
-        # UDLボックスのx座標範囲を取得
+        # UDLボックスの情報を取得
         pts = l["pts"]
         x_min = np.min(pts[:, 0])
         x_max = np.max(pts[:, 0])
         y_min = np.min(pts[:, 1])
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
+        
+        # 長辺を特定（幅と高さを比較）
+        box_width = x_max - x_min
+        box_height = y_max - y_min
+        
+        # 長辺の中点を計算
+        if box_width > box_height:
+            # 横長の場合：上下の辺が長辺
+            long_edge_midpoints = [
+                np.array([(x_min + x_max) / 2, y_min]),  # 上辺の中点
+                np.array([(x_min + x_max) / 2, y_max])   # 下辺の中点
+            ]
+            # 4等分点も計算
+            quarter_points = [
+                np.array([x_min + box_width * 0.25, (y_min + y_max) / 2]),
+                np.array([x_min + box_width * 0.5, (y_min + y_max) / 2]),
+                np.array([x_min + box_width * 0.75, (y_min + y_max) / 2])
+            ]
+        else:
+            # 縦長の場合：左右の辺が長辺
+            long_edge_midpoints = [
+                np.array([x_min, (y_min + y_max) / 2]),  # 左辺の中点
+                np.array([x_max, (y_min + y_max) / 2])   # 右辺の中点
+            ]
+            # 4等分点も計算
+            quarter_points = [
+                np.array([(x_min + x_max) / 2, y_min + box_height * 0.25]),
+                np.array([(x_min + x_max) / 2, y_min + box_height * 0.5]),
+                np.array([(x_min + x_max) / 2, y_min + box_height * 0.75])
+            ]
         
         # 荷重の向きを梁との位置関係で決定
         # まず基本的な角度から方向を計算
@@ -864,7 +894,9 @@ for l in loads:
             "x_range": (x_min, x_max),
             "direction": load_direction.tolist(),
             "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
-            "bbox_center": box_center.tolist()  # バウンディングボックス中心を追加
+            "bbox_center": box_center.tolist(),  # バウンディングボックス中心を追加
+            "udl_arrow_positions": [pos.tolist() for pos in quarter_points],  # 矢印配置位置
+            "udl_long_edge_midpoints": [pos.tolist() for pos in long_edge_midpoints]  # 長辺中点
         })
         continue
     
@@ -1309,8 +1341,14 @@ for l in load_connections:
     else:
         proj = np.array(l["proj_coord"])
     
-    # 等分布荷重でない場合、矢じり先端と梁上の点を線で接続
-    if not l.get("is_udl", False):
+    # 等分布荷重の場合は複数の矢印を描画
+    if l.get("is_udl", False) and "udl_arrow_positions" in l:
+        # 複数の矢印位置に小さな円を描画
+        for pos in l["udl_arrow_positions"]:
+            pos_array = np.array(pos)
+            cv2.circle(cleaned, tuple(map(int, pos_array)), 4, (0, 0, 255), -1)
+    elif not l.get("is_udl", False):
+        # 集中荷重の場合、矢じり先端と梁上の点を線で接続
         # 接続線を描画（緑色の細線）
         cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 200, 0), 2)
         
@@ -1320,8 +1358,41 @@ for l in load_connections:
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
     
-    # 荷重テンプレートを配置（検出された矢印軸に合わせて）
+    # 荷重テンプレートを配置
     if tpl is not None and "bbox_pts" in l:
+        # 等分布荷重の場合は複数の矢印を配置
+        if l.get("is_udl", False) and "udl_arrow_positions" in l:
+            arrow_positions = [np.array(pos) for pos in l["udl_arrow_positions"]]
+            
+            # 各矢印位置にテンプレートを配置
+            for arrow_pos in arrow_positions:
+                # テンプレートのスケール（小さめに）
+                tpl_scaled = scale_image(tpl, 0.6)
+                
+                # テンプレートを角度で回転
+                template_rotation = angle - 180
+                tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
+                
+                # 矢じりを矢印位置に配置
+                h_rot, w_rot = tpl_rot.shape[:2]
+                tip_local_rot = get_template_arrow_tip(tpl_rot)
+                
+                # テンプレート中心からのオフセット
+                offset_row = tip_local_rot[0] - h_rot // 2
+                offset_col = tip_local_rot[1] - w_rot // 2
+                offset_x = offset_col
+                offset_y = offset_row
+                
+                # 角度に応じてオフセットの符号を調整
+                if angle == 90:  # 下向き矢印
+                    template_center = arrow_pos - np.array([offset_x, offset_y])
+                else:  # その他の角度
+                    template_center = arrow_pos + np.array([offset_x, offset_y])
+                
+                cleaned = overlay_rgba(cleaned, tpl_rot, template_center)
+        
+        # 集中荷重の場合の処理
+        elif not l.get("is_udl", False):
         # 対応する荷重データから短辺中点情報を取得
         load_data = None
         bbox_center = np.array(l["bbox_center"])
