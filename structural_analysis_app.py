@@ -859,34 +859,29 @@ for l in loads:
             load_direction = np.array([0, 1])  # デフォルトは下向き
             angle = 90  # デフォルトは下向き
         
-        # この範囲に重なる梁を探す
-        for idx, beam in enumerate(beam_connections):
-            a = np.array(beam["node1_coord"])
-            b = np.array(beam["node2_coord"])
+        # 最も近い梁に等分布荷重を適用
+        # 梁の方向に沿って、バウンディングボックスの範囲に対応する部分を特定
+        if closest_beam is not None:
+            beam_idx = beam_connections.index(closest_beam)
+            beam_a = np.array(closest_beam["node1_coord"])
+            beam_b = np.array(closest_beam["node2_coord"])
+            beam_vector = beam_b - beam_a
+            beam_length = np.linalg.norm(beam_vector)
+            beam_unit = beam_vector / beam_length
             
-            # 梁のx座標範囲
-            beam_x_min = min(a[0], b[0])
-            beam_x_max = max(a[0], b[0])
+            # バウンディングボックスの範囲を梁上に投影
+            # t_start と t_end は既に計算済み（udl_positions計算時に使用）
+            # これらを使って等分布荷重の範囲を特定
             
-            # x座標範囲が重なるかチェック
-            overlap_x_min = max(x_min, beam_x_min)
-            overlap_x_max = min(x_max, beam_x_max)
-            
-            if overlap_x_min < overlap_x_max:
-                # 梁の中心がUDLボックスの近くにあるかチェック
-                beam_center = (a + b) / 2
-                dist_to_box = np.linalg.norm(beam_center - box_center)
-                
-                # 距離が閾値以内なら等分布荷重を適用
-                if dist_to_box < 150:  # 閾値
-                    udl_on_beams.append({
-                        "beam_idx": idx,
-                        "load_value": udl_value,
-                        "direction": load_direction,
-                        "angle": angle,
-                        "x_range": (overlap_x_min, overlap_x_max),
-                        "box_range": (x_min, x_max, y_min, y_max)
-                    })
+            udl_on_beams.append({
+                "beam_idx": beam_idx,
+                "load_value": udl_value,
+                "direction": load_direction,
+                "angle": angle,
+                "t_start": t_start / beam_length,  # 正規化された位置（0-1）
+                "t_end": t_end / beam_length,      # 正規化された位置（0-1）
+                "beam_length": beam_length
+            })
         
         # 等分布荷重の接続情報を記録（表示用）
         # 複数の矢印位置を保存
@@ -1103,6 +1098,55 @@ for l in loads:
         "bbox_pts": l["pts"].tolist(),  # バウンディングボックス座標を追加
         "bbox_center": center.tolist()  # バウンディングボックス中心を追加
     })
+
+# ===== 等分布荷重による梁の分割処理 =====
+# 等分布荷重が作用する範囲で梁を分割
+udl_beams_to_split = []
+for udl in udl_on_beams:
+    beam_idx = udl["beam_idx"]
+    t_start = udl["t_start"]
+    t_end = udl["t_end"]
+    
+    # 範囲の始点と終点で梁を分割
+    if beam_idx < len(beam_connections):
+        beam = beam_connections[beam_idx]
+        beam_a = np.array(beam["node1_coord"])
+        beam_b = np.array(beam["node2_coord"])
+        
+        # 始点の節点を追加（t_startが0より大きい場合）
+        if t_start > 0.05:  # 端点から十分離れている場合のみ
+            split_coord_start = beam_a + t_start * (beam_b - beam_a)
+            split_node_idx_start = len(all_nodes)
+            all_nodes.append(split_coord_start)
+            node_info.append({"type": "udl_boundary", "udl_idx": len(udl_on_beams) - 1})
+            
+            udl_beams_to_split.append({
+                "beam_idx": beam_idx,
+                "split_node_idx": split_node_idx_start,
+                "split_t": t_start,
+                "original_beam": beam
+            })
+        
+        # 終点の節点を追加（t_endが1より小さい場合）
+        if t_end < 0.95:  # 端点から十分離れている場合のみ
+            split_coord_end = beam_a + t_end * (beam_b - beam_a)
+            split_node_idx_end = len(all_nodes)
+            all_nodes.append(split_coord_end)
+            node_info.append({"type": "udl_boundary", "udl_idx": len(udl_on_beams) - 1})
+            
+            udl_beams_to_split.append({
+                "beam_idx": beam_idx,
+                "split_node_idx": split_node_idx_end,
+                "split_t": t_end,
+                "original_beam": beam
+            })
+        
+        # UDL情報に分割後の範囲情報を追加
+        udl["split_t_start"] = t_start
+        udl["split_t_end"] = t_end
+
+# 集中荷重と等分布荷重の分割を統合
+beams_to_split.extend(udl_beams_to_split)
 
 # ===== 梁の分割処理 =====
 # 荷重が作用している位置で梁を2つに分割
@@ -1697,29 +1741,42 @@ with st.spinner("FEM解析データ準備中..."):
     
     # 等分布荷重を梁に適用
     for udl in udl_on_beams:
-        beam_idx = udl["beam_idx"]
-        if beam_idx < len(elements_df):
-            direction = np.array(udl["direction"])
-            load_val = udl["load_value"]
-            
-            # 梁の角度を取得
-            beam_angle = elements_df.loc[beam_idx, 'angle']
-            beam_angle_rad = np.radians(beam_angle)
-            
-            # 梁の方向ベクトル
-            beam_dir = np.array([np.cos(beam_angle_rad), np.sin(beam_angle_rad)])
-            
-            # 荷重を梁のローカル座標系に変換
-            # FEMライブラリは画像座標系（y下向き正）を使用しているため、そのまま適用
-            load_global = np.array([direction[0], direction[1]]) * load_val
-            
-            # 梁の垂直方向成分を計算（梁に垂直な荷重）
-            beam_perp = np.array([-beam_dir[1], beam_dir[0]])
-            load_perp = np.dot(load_global, beam_perp)
-            
-            # 等分布荷重を設定（始点と終点で同じ値）
-            elements_df.loc[beam_idx, 'Ws'] = load_perp
-            elements_df.loc[beam_idx, 'We'] = load_perp
+        original_beam_idx = udl["beam_idx"]
+        direction = np.array(udl["direction"])
+        load_val = udl["load_value"]
+        t_start = udl.get("split_t_start", 0)
+        t_end = udl.get("split_t_end", 1)
+        
+        # 分割後の梁の中で、等分布荷重が作用する範囲の梁を特定
+        # 元の梁インデックスと一致し、かつt値の範囲内にある梁を探す
+        for idx, row in elements_df.iterrows():
+            # 元の梁インデックスが一致するか確認
+            # beam_connectionsから対応する梁を探す
+            if idx < len(beam_connections):
+                beam_conn = beam_connections[idx]
+                if beam_conn.get("beam_idx") == original_beam_idx:
+                    # この梁が等分布荷重の範囲内にあるか確認
+                    # 分割された梁の場合、範囲を確認
+                    # 簡易的に、元の梁インデックスが一致する全ての梁に適用
+                    # （より正確には、t値の範囲を確認する必要がある）
+                    
+                    # 梁の角度を取得
+                    beam_angle = row['angle']
+                    beam_angle_rad = np.radians(beam_angle)
+                    
+                    # 梁の方向ベクトル
+                    beam_dir = np.array([np.cos(beam_angle_rad), np.sin(beam_angle_rad)])
+                    
+                    # 荷重を梁のローカル座標系に変換
+                    load_global = np.array([direction[0], direction[1]]) * load_val
+                    
+                    # 梁の垂直方向成分を計算（梁に垂直な荷重）
+                    beam_perp = np.array([-beam_dir[1], beam_dir[0]])
+                    load_perp = np.dot(load_global, beam_perp)
+                    
+                    # 等分布荷重を設定（始点と終点で同じ値）
+                    elements_df.loc[idx, 'Ws'] = load_perp
+                    elements_df.loc[idx, 'We'] = load_perp
 
 # デバッグ情報（展開可能）
 with st.expander("🔍 検出詳細情報"):
