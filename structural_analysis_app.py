@@ -763,6 +763,18 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
+        # バウンディングボックスの長辺の長さを計算
+        # 4つの辺の長さを計算
+        side_lengths = []
+        for i in range(4):
+            p1 = pts[i]
+            p2 = pts[(i + 1) % 4]
+            length = np.linalg.norm(p2 - p1)
+            side_lengths.append(length)
+        
+        # 長辺の長さを取得
+        udl_width = max(side_lengths)
+        
         # 最も近い梁を見つけて角度を合わせる
         closest_beam = None
         min_dist_to_beam = float('inf')
@@ -868,6 +880,7 @@ for l in loads:
             "bbox_pts": pts.tolist(),  # バウンディングボックス座標を追加
             "bbox_center": box_center.tolist(),  # バウンディングボックス中心を追加
             "udl_arrow_position": udl_position.tolist(),  # 1つの矢印位置
+            "udl_width": udl_width  # バウンディングボックスの長辺の長さ
             "closest_beam_angle": beam_angle if closest_beam else angle  # 梁の角度
         })
         continue
@@ -1335,8 +1348,14 @@ for l in load_connections:
         if l.get("is_udl", False) and "udl_arrow_position" in l:
             arrow_pos = np.array(l["udl_arrow_position"])
             
-            # テンプレートのスケール（通常サイズ）
-            tpl_scaled = scale_image(tpl, 0.8)
+            # バウンディングボックスの長辺の長さに基づいてスケールを計算
+            udl_width = l.get("udl_width", 100)  # デフォルト100
+            # テンプレートの元の幅を基準にスケールを計算
+            base_template_width = tpl.shape[1]  # テンプレートの幅
+            scale_factor = udl_width / base_template_width
+            
+            # テンプレートをスケール
+            tpl_scaled = scale_image(tpl, scale_factor)
             
             # 等分布荷重は梁に垂直に表示するため、angle + 90を使用
             # （angleは既に梁に垂直な角度として計算されている）
