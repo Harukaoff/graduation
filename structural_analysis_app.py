@@ -1338,8 +1338,9 @@ for l in load_connections:
             # テンプレートのスケール（通常サイズ）
             tpl_scaled = scale_image(tpl, 0.8)
             
-            # テンプレートを角度で回転
-            template_rotation = angle - 180
+            # 等分布荷重は梁に垂直に表示するため、angle - 90を使用
+            # （angleは既に梁に垂直な角度として計算されている）
+            template_rotation = angle - 90
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
             # 矢じりを矢印位置に配置
