@@ -856,17 +856,22 @@ for be_idx, be in enumerate(beam_endpoints):
     min_dist2 = np.linalg.norm(be["pt2"] - node2_coord)
     
     # ===== 梁の角度を15度刻みに補正 + 垂直接続の検出 =====
-    # 現在の角度を計算
-    node1_arr = np.array(node1_coord) if not isinstance(node1_coord, np.ndarray) else node1_coord
-    node2_arr = np.array(node2_coord) if not isinstance(node2_coord, np.ndarray) else node2_coord
-    
-    current_angle = math.degrees(math.atan2(node2_arr[1] - node1_arr[1], 
-                                            node2_arr[0] - node1_arr[0]))
-    if current_angle < 0:
-        current_angle += 360
-    
-    # 15度刻みに丸める（角度のみ、座標は変更しない）
-    corrected_angle = round(current_angle / 15) * 15
+    # 単純梁の場合は、既に補正済みの角度を使用
+    if len(beam_endpoints) == 1 and len(supports) == 2:
+        corrected_angle = be["angle"]  # 補正済みの角度
+        current_angle = corrected_angle
+    else:
+        # 現在の角度を計算
+        node1_arr = np.array(node1_coord) if not isinstance(node1_coord, np.ndarray) else node1_coord
+        node2_arr = np.array(node2_coord) if not isinstance(node2_coord, np.ndarray) else node2_coord
+        
+        current_angle = math.degrees(math.atan2(node2_arr[1] - node1_arr[1], 
+                                                node2_arr[0] - node1_arr[0]))
+        if current_angle < 0:
+            current_angle += 360
+        
+        # 15度刻みに丸める（角度のみ、座標は変更しない）
+        corrected_angle = round(current_angle / 15) * 15
     
     # 垂直接続の検出: 他の梁と90度に近い場合は記録（座標は変更しない）
     is_perpendicular = False
