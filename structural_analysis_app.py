@@ -577,7 +577,30 @@ for be in beam_endpoints:
         "is_pt1": False
     })
 
-# 3. 近い端点同士をグループ化（クラスタリング）
+# 3. 支点から最も近い梁端点を探してクラスタに追加
+support_to_beam_connections = []
+for support_idx in range(len(supports)):
+    support_node = all_nodes[support_idx]
+    
+    # 最も近い梁端点を探す
+    min_dist = float('inf')
+    closest_endpoint_idx = -1
+    
+    for ep_idx, ep in enumerate(all_beam_endpoints):
+        dist = np.linalg.norm(support_node - ep["point"])
+        if dist < min_dist:
+            min_dist = dist
+            closest_endpoint_idx = ep_idx
+    
+    # 閾値内なら接続
+    if min_dist < node_connect_th and closest_endpoint_idx >= 0:
+        support_to_beam_connections.append({
+            "support_idx": support_idx,
+            "endpoint_idx": closest_endpoint_idx,
+            "distance": min_dist
+        })
+
+# 4. 近い端点同士をグループ化（クラスタリング）
 endpoint_clusters = []
 used_endpoints = set()
 
@@ -589,6 +612,13 @@ for i, ep1 in enumerate(all_beam_endpoints):
     cluster = [i]
     used_endpoints.add(i)
     
+    # この端点が支点に接続されているかチェック
+    connected_support_idx = -1
+    for conn in support_to_beam_connections:
+        if conn["endpoint_idx"] == i:
+            connected_support_idx = conn["support_idx"]
+            break
+    
     # 近い端点を探してクラスタに追加
     for j, ep2 in enumerate(all_beam_endpoints):
         if j in used_endpoints:
@@ -599,43 +629,55 @@ for i, ep1 in enumerate(all_beam_endpoints):
             cluster.append(j)
             used_endpoints.add(j)
     
-    endpoint_clusters.append(cluster)
+    # クラスタに接続された支点の情報を追加
+    endpoint_clusters.append({
+        "endpoints": cluster,
+        "connected_support": connected_support_idx
+    })
 
-# 4. 各クラスタの中心を節点として追加
+# 5. 各クラスタの中心を節点として追加
 beam_endpoint_to_node = {}  # 梁端点インデックス -> 節点インデックスのマッピング
 
-for cluster in endpoint_clusters:
+for cluster_info in endpoint_clusters:
+    cluster = cluster_info["endpoints"]
+    connected_support = cluster_info["connected_support"]
+    
     # クラスタ内の全端点の平均位置を計算
     cluster_points = [all_beam_endpoints[idx]["point"] for idx in cluster]
     cluster_center = np.mean(cluster_points, axis=0)
     
-    # 既存の節点（支点）に近いかチェック
-    min_dist_to_support = float('inf')
-    snap_to_support_idx = -1
-    
-    for i in range(len(supports)):
-        support_node = all_nodes[i]
-        dist = np.linalg.norm(cluster_center - support_node)
-        if dist < min_dist_to_support:
-            min_dist_to_support = dist
-            snap_to_support_idx = i
-    
-    # 支点に近い場合はスナップ
-    if min_dist_to_support < node_connect_th and snap_to_support_idx >= 0:
-        node_idx = snap_to_support_idx
-        node_coord = all_nodes[snap_to_support_idx]
+    # 支点に接続されている場合は、その支点を使用
+    if connected_support >= 0:
+        node_idx = connected_support
+        node_coord = all_nodes[connected_support]
     else:
-        # 新規節点として追加
-        node_idx = len(all_nodes)
-        node_coord = cluster_center
-        all_nodes.append(cluster_center)
-        node_info.append({"type": "beam_connection", "cluster_size": len(cluster)})
+        # 既存の節点（支点）に近いかチェック
+        min_dist_to_support = float('inf')
+        snap_to_support_idx = -1
+        
+        for i in range(len(supports)):
+            support_node = all_nodes[i]
+            dist = np.linalg.norm(cluster_center - support_node)
+            if dist < min_dist_to_support:
+                min_dist_to_support = dist
+                snap_to_support_idx = i
+        
+        # 支点に近い場合はスナップ
+        if min_dist_to_support < node_connect_th and snap_to_support_idx >= 0:
+            node_idx = snap_to_support_idx
+            node_coord = all_nodes[snap_to_support_idx]
+        else:
+            # 新規節点として追加
+            node_idx = len(all_nodes)
+            node_coord = cluster_center
+            all_nodes.append(cluster_center)
+            node_info.append({"type": "beam_connection", "cluster_size": len(cluster)})
     
     # クラスタ内の全端点をこの節点にマッピング
     for ep_idx in cluster:
         beam_endpoint_to_node[ep_idx] = (node_idx, node_coord)
 
-# 5. 梁の接続情報を作成
+# 6. 梁の接続情報を作成
 beam_connections = []
 for be_idx, be in enumerate(beam_endpoints):
     # 端点1と端点2のインデックスを計算
