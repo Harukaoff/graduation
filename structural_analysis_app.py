@@ -2273,11 +2273,11 @@ try:
         for conn in beam_connections:
             pt1 = np.array(conn["node1_coord"])
             pt2 = np.array(conn["node2_coord"])
-            ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=2, alpha=0.3, label='元形状' if conn == beam_connections[0] else '')
+            ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3, label='元形状' if conn == beam_connections[0] else '')
         
         # 変形後の形状（赤色、スケール拡大済み）
         for df in fig_list_deform_scaled:
-            ax.plot(df['ax'], df['ay'], 'r-', linewidth=2, label='変形後' if df is fig_list_deform_scaled[0] else '')
+            ax.plot(df['ax'], df['ay'], 'r-', linewidth=4, label='変形後' if df is fig_list_deform_scaled[0] else '')
         
         # 節点
         for i, row in nodes_df.iterrows():
@@ -2334,11 +2334,11 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=2, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=1)
-                ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=2)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
                        list(df['y']) + list(df['Ny'][::-1]), 
                        'blue', alpha=0.3)
@@ -2355,11 +2355,11 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=2, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=1)
-                ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=2)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
                        list(df['y']) + list(df['Qy'][::-1]), 
                        'green', alpha=0.3)
@@ -2376,11 +2376,11 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=2, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=1)
-                ax.plot(df['Mx'], df['My'], 'r-', linewidth=2)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
                        list(df['y']) + list(df['My'][::-1]), 
                        'red', alpha=0.3)
