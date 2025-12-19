@@ -765,7 +765,71 @@ for conn in support_to_beam_connections:
     })
     used_endpoints.add(ep_idx)
 
-# 次に、支点に接続されていない端点同士をクラスタリング
+# 次に、水平梁と鉛直梁の端点を優先的に接続
+# 梁の角度を取得して水平・鉛直を判定
+horizontal_beams = []  # 水平梁（0度、180度付近）
+vertical_beams = []    # 鉛直梁（90度、270度付近）
+
+for be_idx, be in enumerate(beam_endpoints):
+    angle = be["angle"]
+    # 15度の範囲で水平・鉛直を判定
+    if (angle <= 15 or angle >= 345) or (165 <= angle <= 195):
+        horizontal_beams.append(be_idx)
+    elif (75 <= angle <= 105) or (255 <= angle <= 285):
+        vertical_beams.append(be_idx)
+
+# 水平梁と鉛直梁の端点を接続
+hv_connections = []
+for h_idx in horizontal_beams:
+    h_ep1_idx = h_idx * 2
+    h_ep2_idx = h_idx * 2 + 1
+    
+    for v_idx in vertical_beams:
+        v_ep1_idx = v_idx * 2
+        v_ep2_idx = v_idx * 2 + 1
+        
+        # 4つの組み合わせの距離を計算
+        distances = [
+            (h_ep1_idx, v_ep1_idx, np.linalg.norm(all_beam_endpoints[h_ep1_idx]["point"] - all_beam_endpoints[v_ep1_idx]["point"])),
+            (h_ep1_idx, v_ep2_idx, np.linalg.norm(all_beam_endpoints[h_ep1_idx]["point"] - all_beam_endpoints[v_ep2_idx]["point"])),
+            (h_ep2_idx, v_ep1_idx, np.linalg.norm(all_beam_endpoints[h_ep2_idx]["point"] - all_beam_endpoints[v_ep1_idx]["point"])),
+            (h_ep2_idx, v_ep2_idx, np.linalg.norm(all_beam_endpoints[h_ep2_idx]["point"] - all_beam_endpoints[v_ep2_idx]["point"]))
+        ]
+        
+        # 最も近い組み合わせを探す
+        min_dist_combo = min(distances, key=lambda x: x[2])
+        
+        # 閾値内なら接続候補として記録
+        if min_dist_combo[2] < node_connect_th * 1.5:  # 閾値を1.5倍に拡大
+            hv_connections.append({
+                "ep1_idx": min_dist_combo[0],
+                "ep2_idx": min_dist_combo[1],
+                "distance": min_dist_combo[2]
+            })
+            st.info(f"🔗 水平梁{h_idx}と鉛直梁{v_idx}の端点を接続 (距離: {min_dist_combo[2]:.1f}px)")
+
+# 水平-鉛直接続をクラスタとして追加
+for conn in hv_connections:
+    ep1_idx = conn["ep1_idx"]
+    ep2_idx = conn["ep2_idx"]
+    
+    # 既に使用されている端点はスキップ
+    if ep1_idx in used_endpoints or ep2_idx in used_endpoints:
+        continue
+    
+    # 支点に接続されている端点はスキップ
+    if ep1_idx in support_connected_endpoints or ep2_idx in support_connected_endpoints:
+        continue
+    
+    # クラスタを作成
+    endpoint_clusters.append({
+        "endpoints": [ep1_idx, ep2_idx],
+        "connected_support": -1
+    })
+    used_endpoints.add(ep1_idx)
+    used_endpoints.add(ep2_idx)
+
+# 残りの端点同士をクラスタリング
 for i, ep1 in enumerate(all_beam_endpoints):
     if i in used_endpoints:
         continue
