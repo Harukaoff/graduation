@@ -578,6 +578,9 @@ for be in beam_endpoints:
     })
 
 # 3. 支点から最も近い梁端点を探してクラスタに追加
+# 支点接続用の閾値を大きくする（通常の2倍）
+support_connect_th = node_connect_th * 2
+
 support_to_beam_connections = []
 for support_idx in range(len(supports)):
     support_node = all_nodes[support_idx]
@@ -585,20 +588,29 @@ for support_idx in range(len(supports)):
     # 最も近い梁端点を探す
     min_dist = float('inf')
     closest_endpoint_idx = -1
+    closest_endpoint_point = None
     
     for ep_idx, ep in enumerate(all_beam_endpoints):
         dist = np.linalg.norm(support_node - ep["point"])
         if dist < min_dist:
             min_dist = dist
             closest_endpoint_idx = ep_idx
+            closest_endpoint_point = ep["point"]
     
-    # 閾値内なら接続
-    if min_dist < node_connect_th and closest_endpoint_idx >= 0:
+    # 閾値内なら接続（より大きな閾値を使用）
+    if min_dist < support_connect_th and closest_endpoint_idx >= 0:
         support_to_beam_connections.append({
             "support_idx": support_idx,
             "endpoint_idx": closest_endpoint_idx,
-            "distance": min_dist
+            "distance": min_dist,
+            "support_coord": support_node.tolist() if isinstance(support_node, np.ndarray) else support_node,
+            "endpoint_coord": closest_endpoint_point.tolist() if isinstance(closest_endpoint_point, np.ndarray) else closest_endpoint_point
         })
+        # デバッグ情報
+        st.info(f"✅ 支点{support_idx}を梁端点{closest_endpoint_idx}に接続 (距離: {min_dist:.1f}px)")
+    else:
+        # 接続できなかった場合の警告
+        st.warning(f"⚠️ 支点{support_idx}は梁端点に接続できませんでした (最短距離: {min_dist:.1f}px, 閾値: {support_connect_th:.1f}px)")
 
 # 4. 支点に接続された端点のセットを作成
 support_connected_endpoints = set()
