@@ -710,8 +710,8 @@ if len(beam_endpoints) == 1 and len(supports) == 2:
     st.info(f"✅ 支点1を梁端点{support_to_beam_connections[1]['endpoint_idx']}に接続")
 else:
     # 通常ケース：支点から最も近い梁端点を探してクラスタに追加
-    # 支点接続用の閾値を大きくする（通常の3倍）
-    support_connect_th = node_connect_th * 3
+    # 支点接続用の閾値を大きくする（通常の5倍）
+    support_connect_th = node_connect_th * 5
 
     support_to_beam_connections = []
     for support_idx in range(len(supports)):
