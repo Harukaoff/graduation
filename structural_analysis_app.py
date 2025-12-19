@@ -600,10 +600,28 @@ for support_idx in range(len(supports)):
             "distance": min_dist
         })
 
-# 4. 近い端点同士をグループ化（クラスタリング）
+# 4. 支点に接続された端点のセットを作成
+support_connected_endpoints = set()
+for conn in support_to_beam_connections:
+    support_connected_endpoints.add(conn["endpoint_idx"])
+
+# 5. 近い端点同士をグループ化（クラスタリング）
+# ただし、支点に接続された端点は独立したクラスタとして扱う
 endpoint_clusters = []
 used_endpoints = set()
 
+# まず、支点に接続された端点を独立したクラスタとして追加
+for conn in support_to_beam_connections:
+    ep_idx = conn["endpoint_idx"]
+    support_idx = conn["support_idx"]
+    
+    endpoint_clusters.append({
+        "endpoints": [ep_idx],
+        "connected_support": support_idx
+    })
+    used_endpoints.add(ep_idx)
+
+# 次に、支点に接続されていない端点同士をクラスタリング
 for i, ep1 in enumerate(all_beam_endpoints):
     if i in used_endpoints:
         continue
@@ -612,16 +630,11 @@ for i, ep1 in enumerate(all_beam_endpoints):
     cluster = [i]
     used_endpoints.add(i)
     
-    # この端点が支点に接続されているかチェック
-    connected_support_idx = -1
-    for conn in support_to_beam_connections:
-        if conn["endpoint_idx"] == i:
-            connected_support_idx = conn["support_idx"]
-            break
-    
-    # 近い端点を探してクラスタに追加
+    # 近い端点を探してクラスタに追加（支点に接続されていない端点のみ）
     for j, ep2 in enumerate(all_beam_endpoints):
         if j in used_endpoints:
+            continue
+        if j in support_connected_endpoints:
             continue
         
         dist = np.linalg.norm(ep1["point"] - ep2["point"])
@@ -629,13 +642,13 @@ for i, ep1 in enumerate(all_beam_endpoints):
             cluster.append(j)
             used_endpoints.add(j)
     
-    # クラスタに接続された支点の情報を追加
+    # クラスタに接続された支点の情報を追加（この場合は-1）
     endpoint_clusters.append({
         "endpoints": cluster,
-        "connected_support": connected_support_idx
+        "connected_support": -1
     })
 
-# 5. 各クラスタの中心を節点として追加
+# 6. 各クラスタの中心を節点として追加
 beam_endpoint_to_node = {}  # 梁端点インデックス -> 節点インデックスのマッピング
 
 for cluster_info in endpoint_clusters:
@@ -677,7 +690,7 @@ for cluster_info in endpoint_clusters:
     for ep_idx in cluster:
         beam_endpoint_to_node[ep_idx] = (node_idx, node_coord)
 
-# 6. 梁の接続情報を作成
+# 7. 梁の接続情報を作成
 beam_connections = []
 for be_idx, be in enumerate(beam_endpoints):
     # 端点1と端点2のインデックスを計算
