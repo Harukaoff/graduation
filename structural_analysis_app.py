@@ -634,13 +634,33 @@ for be in beam_endpoints:
 if len(beam_endpoints) == 1 and len(supports) == 2:
     st.info("🔧 単純梁を検出：梁の両端を2つの支点に接続します")
     
-    # 梁の2つの端点
-    beam_pt1 = beam_endpoints[0]["pt1"]
-    beam_pt2 = beam_endpoints[0]["pt2"]
-    
     # 2つの支点
     support0 = all_nodes[0]
     support1 = all_nodes[1]
+    
+    # 支点を結ぶ角度を計算
+    support_vector = support1 - support0
+    support_angle = math.degrees(math.atan2(support_vector[1], support_vector[0]))
+    if support_angle < 0:
+        support_angle += 360
+    
+    # 15度刻みに補正
+    corrected_angle = round(support_angle / 15) * 15
+    
+    # 支点間の距離
+    support_distance = np.linalg.norm(support_vector)
+    
+    # 補正後の角度で梁の端点を再計算
+    angle_rad = math.radians(corrected_angle)
+    beam_pt1 = support0  # 端点1は支点0
+    beam_pt2 = support0 + support_distance * np.array([math.cos(angle_rad), math.sin(angle_rad)])  # 端点2は補正後の位置
+    
+    # 梁端点を更新
+    beam_endpoints[0]["pt1"] = beam_pt1
+    beam_endpoints[0]["pt2"] = beam_pt2
+    beam_endpoints[0]["angle"] = corrected_angle
+    
+    st.info(f"📐 梁の角度を補正：{support_angle:.1f}° → {corrected_angle:.1f}°")
     
     # 各支点に最も近い梁端点を決定
     dist_s0_p1 = np.linalg.norm(support0 - beam_pt1)
