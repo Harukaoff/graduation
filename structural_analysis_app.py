@@ -370,9 +370,9 @@ if not st.button("🚀 解析実行", type="primary"):
 # 画像サイズを取得
 img_height, img_width = img.shape[:2]
 
-# 固定閾値
-base_y_align_th = 150.0
-base_node_connect_th = 300
+# 画像サイズに応じた閾値（画像の5%程度）
+base_y_align_th = min(150.0, img_height * 0.05)
+base_node_connect_th = min(100.0, max(img_width, img_height) * 0.03)  # 3%程度に縮小
 
 def is_valid_structure(supports_count, beams_count, loads_count):
     """解析可能な構造かどうかを判定"""
@@ -620,10 +620,11 @@ for be in beam_endpoints:
     if current_angle < 0:
         current_angle += 360
     
-    # 15度刻みに丸める
+    # 15度刻みに丸める（角度のみ、座標は変更しない）
     corrected_angle = round(current_angle / 15) * 15
     
-    # 垂直接続の検出: 他の梁と90度に近い場合は90度にする
+    # 垂直接続の検出: 他の梁と90度に近い場合は記録（座標は変更しない）
+    is_perpendicular = False
     for existing_conn in beam_connections:
         existing_angle = existing_conn.get("angle", 0)
         angle_diff = abs(corrected_angle - existing_angle)
@@ -634,7 +635,8 @@ for be in beam_endpoints:
         
         # 90度に近い場合（85-95度の範囲）
         if 85 <= angle_diff <= 95:
-            # 正確に90度にする
+            is_perpendicular = True
+            # 角度の補正は行うが、座標は変更しない
             if angle_diff < 90:
                 corrected_angle = existing_angle + 90
             else:
@@ -644,26 +646,9 @@ for be in beam_endpoints:
             corrected_angle = corrected_angle % 360
             break
     
-    # 角度が変わった場合、端点2の座標を補正
-    if abs(corrected_angle - current_angle) > 0.1:
-        # 梁の長さを保持
-        beam_length = np.linalg.norm(node2_arr - node1_arr)
-        
-        # 補正後の角度で端点2の新しい座標を計算
-        angle_rad = math.radians(corrected_angle)
-        new_node2_x = node1_arr[0] + beam_length * math.cos(angle_rad)
-        new_node2_y = node1_arr[1] + beam_length * math.sin(angle_rad)
-        node2_coord_corrected = np.array([new_node2_x, new_node2_y])
-        
-        # 端点2が新規節点の場合のみ座標を更新
-        if node2_idx == len(all_nodes) - 1 and node_info[-1]["type"] == "beam_endpoint":
-            all_nodes[node2_idx] = node2_coord_corrected
-            node2_coord = node2_coord_corrected
-        
-        # 端点1が新規節点の場合も同様に補正（端点1を固定して端点2を動かす方が自然）
-        # ただし、両端点が支点にスナップしている場合は補正しない
-    else:
-        corrected_angle = current_angle
+    # バウンディングボックスの検出結果を優先するため、座標の補正は行わない
+    # 角度のみ補正値を記録
+    # （ラーメン構造では検出位置が重要なため、座標変更は避ける）
     
     beam_connections.append({
         "beam_idx": be["beam_idx"],
