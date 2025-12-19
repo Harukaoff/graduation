@@ -637,8 +637,14 @@ for i, ep1 in enumerate(all_beam_endpoints):
         if j in support_connected_endpoints:
             continue
         
+        # 距離による判定
         dist = np.linalg.norm(ep1["point"] - ep2["point"])
-        if dist < node_connect_th:
+        
+        # y座標の差による判定（水平方向の梁の接続用）
+        y_diff = abs(ep1["point"][1] - ep2["point"][1])
+        
+        # 距離が閾値内、またはy座標の差が閾値内なら接続
+        if dist < node_connect_th or y_diff < y_align_th:
             cluster.append(j)
             used_endpoints.add(j)
     
