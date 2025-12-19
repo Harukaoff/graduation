@@ -563,52 +563,92 @@ for i, b in enumerate(beams):
         "conf": b["conf"]
     })
 
-# 2. 梁端点を既存の節点にスナップ、または新規節点として追加
-beam_connections = []
+# 2. 全ての梁端点を収集
+all_beam_endpoints = []
 for be in beam_endpoints:
-    # 端点1の処理
-    pt1 = be["pt1"]
-    min_dist1 = float('inf')
-    snap_idx1 = -1
+    all_beam_endpoints.append({
+        "point": be["pt1"],
+        "beam_idx": be["beam_idx"],
+        "is_pt1": True
+    })
+    all_beam_endpoints.append({
+        "point": be["pt2"],
+        "beam_idx": be["beam_idx"],
+        "is_pt1": False
+    })
+
+# 3. 近い端点同士をグループ化（クラスタリング）
+endpoint_clusters = []
+used_endpoints = set()
+
+for i, ep1 in enumerate(all_beam_endpoints):
+    if i in used_endpoints:
+        continue
     
-    for i, node in enumerate(all_nodes):
-        dist = np.linalg.norm(pt1 - node)
-        if dist < min_dist1:
-            min_dist1 = dist
-            snap_idx1 = i
+    # 新しいクラスタを作成
+    cluster = [i]
+    used_endpoints.add(i)
     
-    # 閾値内ならスナップ、そうでなければ新規節点
-    if min_dist1 < node_connect_th and snap_idx1 >= 0:
-        node1_idx = snap_idx1
-        node1_coord = all_nodes[snap_idx1]
+    # 近い端点を探してクラスタに追加
+    for j, ep2 in enumerate(all_beam_endpoints):
+        if j in used_endpoints:
+            continue
+        
+        dist = np.linalg.norm(ep1["point"] - ep2["point"])
+        if dist < node_connect_th:
+            cluster.append(j)
+            used_endpoints.add(j)
+    
+    endpoint_clusters.append(cluster)
+
+# 4. 各クラスタの中心を節点として追加
+beam_endpoint_to_node = {}  # 梁端点インデックス -> 節点インデックスのマッピング
+
+for cluster in endpoint_clusters:
+    # クラスタ内の全端点の平均位置を計算
+    cluster_points = [all_beam_endpoints[idx]["point"] for idx in cluster]
+    cluster_center = np.mean(cluster_points, axis=0)
+    
+    # 既存の節点（支点）に近いかチェック
+    min_dist_to_support = float('inf')
+    snap_to_support_idx = -1
+    
+    for i in range(len(supports)):
+        support_node = all_nodes[i]
+        dist = np.linalg.norm(cluster_center - support_node)
+        if dist < min_dist_to_support:
+            min_dist_to_support = dist
+            snap_to_support_idx = i
+    
+    # 支点に近い場合はスナップ
+    if min_dist_to_support < node_connect_th and snap_to_support_idx >= 0:
+        node_idx = snap_to_support_idx
+        node_coord = all_nodes[snap_to_support_idx]
     else:
         # 新規節点として追加
-        node1_idx = len(all_nodes)
-        node1_coord = pt1
-        all_nodes.append(pt1)
-        node_info.append({"type": "beam_endpoint", "beam_idx": be["beam_idx"]})
+        node_idx = len(all_nodes)
+        node_coord = cluster_center
+        all_nodes.append(cluster_center)
+        node_info.append({"type": "beam_connection", "cluster_size": len(cluster)})
     
-    # 端点2の処理
-    pt2 = be["pt2"]
-    min_dist2 = float('inf')
-    snap_idx2 = -1
+    # クラスタ内の全端点をこの節点にマッピング
+    for ep_idx in cluster:
+        beam_endpoint_to_node[ep_idx] = (node_idx, node_coord)
+
+# 5. 梁の接続情報を作成
+beam_connections = []
+for be_idx, be in enumerate(beam_endpoints):
+    # 端点1と端点2のインデックスを計算
+    pt1_idx = be_idx * 2
+    pt2_idx = be_idx * 2 + 1
     
-    for i, node in enumerate(all_nodes):
-        dist = np.linalg.norm(pt2 - node)
-        if dist < min_dist2:
-            min_dist2 = dist
-            snap_idx2 = i
+    # マッピングから節点情報を取得
+    node1_idx, node1_coord = beam_endpoint_to_node[pt1_idx]
+    node2_idx, node2_coord = beam_endpoint_to_node[pt2_idx]
     
-    # 閾値内ならスナップ、そうでなければ新規節点
-    if min_dist2 < node_connect_th and snap_idx2 >= 0:
-        node2_idx = snap_idx2
-        node2_coord = all_nodes[snap_idx2]
-    else:
-        # 新規節点として追加
-        node2_idx = len(all_nodes)
-        node2_coord = pt2
-        all_nodes.append(pt2)
-        node_info.append({"type": "beam_endpoint", "beam_idx": be["beam_idx"]})
+    # スナップ距離を計算
+    min_dist1 = np.linalg.norm(be["pt1"] - node1_coord)
+    min_dist2 = np.linalg.norm(be["pt2"] - node2_coord)
     
     # ===== 梁の角度を15度刻みに補正 + 垂直接続の検出 =====
     # 現在の角度を計算
@@ -758,6 +798,13 @@ for l in loads:
         y_max = np.max(pts[:, 1])
         box_center = pts.mean(axis=0)
         
+        # バウンディングボックスの幅と高さを計算
+        box_width = x_max - x_min
+        box_height = y_max - y_min
+        
+        # 横長か縦長かを判定
+        is_horizontal = box_width > box_height
+        
         # バウンディングボックスの長辺の長さを計算
         # 4つの辺の長さを計算
         side_lengths = []
@@ -816,27 +863,39 @@ for l in loads:
             # 角度を15度刻みに丸める
             angle = round_angle_deg(angle)
             
-            # バウンディングボックスの長辺の範囲に沿って複数の矢印位置を計算
-            # 梁の方向に沿って、バウンディングボックスの範囲内で等間隔に配置
+            # バウンディングボックスの向きに応じて矢印を配置
             # 矢印の間隔を決定（約50ピクセル間隔）
             arrow_spacing = 50
-            num_arrows = max(3, int(udl_width / arrow_spacing))
             
-            # 梁上でバウンディングボックスの範囲に対応する位置を計算
-            # バウンディングボックスの中心から梁への投影
-            t_center = np.dot(box_center - beam_a, beam_unit)
-            
-            # バウンディングボックスの幅の半分を梁方向に投影
-            half_width = udl_width / 2
-            t_start = max(0, min(beam_length, t_center - half_width))
-            t_end = max(0, min(beam_length, t_center + half_width))
-            
-            # 等間隔で矢印位置を計算
-            udl_positions = []
-            for i in range(num_arrows):
-                t = t_start + (t_end - t_start) * i / (num_arrows - 1) if num_arrows > 1 else t_center
-                pos = beam_a + t * beam_unit
-                udl_positions.append(pos)
+            if is_horizontal:
+                # 横長の場合：x方向に沿って配置（従来通り）
+                num_arrows = max(3, int(udl_width / arrow_spacing))
+                
+                # 梁上でバウンディングボックスの範囲に対応する位置を計算
+                t_center = np.dot(box_center - beam_a, beam_unit)
+                half_width = udl_width / 2
+                t_start = max(0, min(beam_length, t_center - half_width))
+                t_end = max(0, min(beam_length, t_center + half_width))
+                
+                # 等間隔で矢印位置を計算
+                udl_positions = []
+                for i in range(num_arrows):
+                    t = t_start + (t_end - t_start) * i / (num_arrows - 1) if num_arrows > 1 else t_center
+                    pos = beam_a + t * beam_unit
+                    udl_positions.append(pos)
+            else:
+                # 縦長の場合：y方向に沿って配置
+                num_arrows = max(3, int(udl_width / arrow_spacing))
+                
+                # y方向の範囲で等間隔に配置
+                udl_positions = []
+                for i in range(num_arrows):
+                    y_pos = y_min + (y_max - y_min) * i / (num_arrows - 1) if num_arrows > 1 else box_center[1]
+                    # x座標は梁上の投影点
+                    # y座標に対応する梁上の点を探す
+                    # 簡易的に、box_centerのx座標を使用
+                    pos = np.array([box_center[0], y_pos])
+                    udl_positions.append(pos)
             
         else:
             # 梁が見つからない場合はボックス中心に配置
@@ -855,8 +914,15 @@ for l in loads:
             beam_unit = beam_vector / beam_length
             
             # バウンディングボックスの範囲を梁上に投影
-            # t_start と t_end は既に計算済み（udl_positions計算時に使用）
-            # これらを使って等分布荷重の範囲を特定
+            if is_horizontal:
+                # 横長の場合：t_start と t_end は既に計算済み
+                pass
+            else:
+                # 縦長の場合：y方向の範囲を梁上に投影
+                t_center = np.dot(box_center - beam_a, beam_unit)
+                half_height = box_height / 2
+                t_start = max(0, min(beam_length, t_center - half_height))
+                t_end = max(0, min(beam_length, t_center + half_height))
             
             udl_on_beams.append({
                 "beam_idx": beam_idx,
@@ -879,6 +945,7 @@ for l in loads:
             "beam_idx_in_list": -1,
             "beam_t": 0.5,
             "angle": angle,
+            "is_horizontal": is_horizontal,  # 横長か縦長かのフラグ
             "conf": float(l["conf"]),
             "dist_to_beam": 0,
             "needs_split": False,
@@ -1407,9 +1474,16 @@ for l in load_connections:
             # 通常サイズのテンプレートを使用（個々の矢印は標準サイズ）
             tpl_scaled = scale_image(tpl, 0.6)
             
-            # 等分布荷重は梁に垂直に表示するため、angle + 90を使用
-            # （angleは既に梁に垂直な角度として計算されている）
-            template_rotation = angle + 90
+            # 横長・縦長に応じてテンプレートの回転角度を調整
+            is_horizontal = l.get("is_horizontal", True)
+            
+            if is_horizontal:
+                # 横長の場合：梁に垂直に表示（従来通り）
+                template_rotation = angle + 90
+            else:
+                # 縦長の場合：さらに90度回転
+                template_rotation = angle + 180
+            
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
             # 矢じりを矢印位置に配置
