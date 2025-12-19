@@ -551,6 +551,59 @@ for i, s in enumerate(supports):
     all_nodes.append(s["node"])
     node_info.append({"type": "support", "support_idx": i, "support_type": s["type"]})
 
+# ===== 重複梁の削除 =====
+# バウンディングボックスが大きく重なっている梁を削除
+def calculate_bbox_overlap(pts1, pts2):
+    """2つのバウンディングボックスの重なり度合いを計算（0-1）"""
+    # 各ボックスの範囲を計算
+    x1_min, y1_min = np.min(pts1, axis=0)
+    x1_max, y1_max = np.max(pts1, axis=0)
+    x2_min, y2_min = np.min(pts2, axis=0)
+    x2_max, y2_max = np.max(pts2, axis=0)
+    
+    # 重なり領域を計算
+    overlap_x = max(0, min(x1_max, x2_max) - max(x1_min, x2_min))
+    overlap_y = max(0, min(y1_max, y2_max) - max(y1_min, y2_min))
+    overlap_area = overlap_x * overlap_y
+    
+    # 各ボックスの面積
+    area1 = (x1_max - x1_min) * (y1_max - y1_min)
+    area2 = (x2_max - x2_min) * (y2_max - y2_min)
+    
+    # 小さい方の面積に対する重なり率
+    if min(area1, area2) > 0:
+        return overlap_area / min(area1, area2)
+    return 0
+
+beams_to_remove_duplicate = []
+overlap_threshold = 0.7  # 70%以上重なっていたら重複とみなす
+
+for i in range(len(beams)):
+    if i in beams_to_remove_duplicate:
+        continue
+    
+    for j in range(i + 1, len(beams)):
+        if j in beams_to_remove_duplicate:
+            continue
+        
+        # 重なり度合いを計算
+        overlap = calculate_bbox_overlap(beams[i]["pts"], beams[j]["pts"])
+        
+        if overlap > overlap_threshold:
+            # 信頼度の低い方を削除
+            if beams[i]["conf"] < beams[j]["conf"]:
+                beams_to_remove_duplicate.append(i)
+                st.info(f"🗑️ 梁{i}を削除（梁{j}と{overlap*100:.1f}%重複、信頼度: {beams[i]['conf']:.2f} < {beams[j]['conf']:.2f}）")
+                break
+            else:
+                beams_to_remove_duplicate.append(j)
+                st.info(f"🗑️ 梁{j}を削除（梁{i}と{overlap*100:.1f}%重複、信頼度: {beams[j]['conf']:.2f} < {beams[i]['conf']:.2f}）")
+
+# 重複梁を削除
+if beams_to_remove_duplicate:
+    beams = [b for i, b in enumerate(beams) if i not in beams_to_remove_duplicate]
+    st.info(f"ℹ️ {len(beams_to_remove_duplicate)}本の重複梁を削除しました")
+
 # 梁の端点を追加（まだスナップしていない状態）
 beam_endpoints = []
 for i, b in enumerate(beams):
