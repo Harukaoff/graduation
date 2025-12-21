@@ -1642,7 +1642,7 @@ for conn in beam_connections:
     node2_idx = conn["node2_idx"]
     pt1 = np.array(all_nodes[node1_idx])
     pt2 = np.array(all_nodes[node2_idx])
-    cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (80, 80, 80), 4)
+    cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (80, 80, 80), 8)
 
 # 支点を描画（テンプレート上端が節点位置になるように配置）
 for i, s in enumerate(supports):
@@ -1733,7 +1733,7 @@ for l in load_connections:
     elif not l.get("is_udl", False):
         # 集中荷重の場合、矢じり先端と梁上の点を線で接続
         # 接続線を描画（緑色の細線）
-        cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 200, 0), 2)
+        cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 200, 0), 3)
         
         # 矢じり先端に小さな円を描画（荷重の作用点）
         cv2.circle(cleaned, tuple(map(int, tip)), 5, (0, 0, 255), -1)
@@ -2269,15 +2269,15 @@ try:
         ax.grid(True, alpha=0.3)
         ax.set_title(f"変形図（変形倍率: {scale_factor:.1f}倍）", fontsize=16, fontweight='bold')
         
-        # 元の形状（灰色）
+        # 元の形状（太い黒線）
         for conn in beam_connections:
             pt1 = np.array(conn["node1_coord"])
             pt2 = np.array(conn["node2_coord"])
-            ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3, label='元形状' if conn == beam_connections[0] else '')
+            ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4, label='元形状' if conn == beam_connections[0] else '')
         
-        # 変形後の形状（赤色、スケール拡大済み）
+        # 変形後の形状（太い赤線、スケール拡大済み）
         for df in fig_list_deform_scaled:
-            ax.plot(df['ax'], df['ay'], 'r-', linewidth=4, label='変形後' if df is fig_list_deform_scaled[0] else '')
+            ax.plot(df['ax'], df['ay'], 'r-', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
         
         # 節点
         for i, row in nodes_df.iterrows():
@@ -2334,10 +2334,10 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
                 ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
                        list(df['y']) + list(df['Ny'][::-1]), 
@@ -2355,10 +2355,10 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
                 ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
                        list(df['y']) + list(df['Qy'][::-1]), 
@@ -2376,10 +2376,10 @@ try:
             for conn in beam_connections:
                 pt1 = np.array(conn["node1_coord"])
                 pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=4, alpha=0.3)
+                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
             
             for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=3)
+                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
                 ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
                 ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
                        list(df['y']) + list(df['My'][::-1]), 
