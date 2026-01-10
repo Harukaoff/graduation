@@ -2330,11 +2330,11 @@ try:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7, label='変形前' if conn == beam_connections[0] else '')
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7)
     
     # 変形後の形状（黒）- 調整済みデータを使用
     for df in fig_list_deform_scaled:
-        ax.plot(df['ax'], df['ay'], 'black', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
+        ax.plot(df['ax'], df['ay'], 'black', linewidth=6)
     
     # 節点
     for i, row in nodes_df.iterrows():
@@ -2348,7 +2348,6 @@ try:
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
-    ax.legend()
     ax.invert_yaxis()
     st.pyplot(fig)
     
@@ -2412,7 +2411,7 @@ try:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
@@ -2450,7 +2449,7 @@ try:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
@@ -2488,7 +2487,7 @@ try:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
