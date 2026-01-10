@@ -1542,98 +1542,11 @@ if beams_to_split:
     # 梁のリストを更新
     beam_connections = new_beam_connections
 
-# ===== バウンディングボックス表示画像生成 =====
-bbox_img = img.copy()
-
-# 色の定義（BGR形式）
-colors = {
-    'support': (0, 0, 255),    # 赤：支点
-    'beam': (255, 0, 0),       # 青：梁
-    'load': (0, 255, 0),       # 緑：荷重
-    'udl': (0, 255, 255),      # 黄：等分布荷重
-    'momentl': (255, 0, 255),  # マゼンタ：左モーメント
-    'momentr': (255, 255, 0)   # シアン：右モーメント
-}
-
-# 検出された全要素のバウンディングボックスを描画
-for support in supports:
-    pts = support["pts"].astype(int)
-    color = colors.get('support', (128, 128, 128))
-    cv2.polylines(bbox_img, [pts], True, color, 3)
-    # ラベルを描画
-    center = pts.mean(axis=0).astype(int)
-    cv2.putText(bbox_img, f"{support['type']}", (center[0]-20, center[1]-10), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-    # 信頼度を表示
-    cv2.putText(bbox_img, f"{support['conf']:.2f}", (center[0]-20, center[1]+15), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-for beam in beams:
-    pts = beam["pts"].astype(int)
-    color = colors.get('beam', (128, 128, 128))
-    cv2.polylines(bbox_img, [pts], True, color, 3)
-    # ラベルを描画
-    center = pts.mean(axis=0).astype(int)
-    cv2.putText(bbox_img, "beam", (center[0]-20, center[1]-10), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-    # 信頼度を表示
-    cv2.putText(bbox_img, f"{beam['conf']:.2f}", (center[0]-20, center[1]+15), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-for load in loads:
-    pts = load["pts"].astype(int)
-    load_type = load["type"]
-    color = colors.get(load_type, (128, 128, 128))
-    cv2.polylines(bbox_img, [pts], True, color, 3)
-    # ラベルを描画
-    center = pts.mean(axis=0).astype(int)
-    cv2.putText(bbox_img, load_type, (center[0]-20, center[1]-10), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-    # 信頼度と角度を表示
-    cv2.putText(bbox_img, f"{load['conf']:.2f}", (center[0]-20, center[1]+15), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-    cv2.putText(bbox_img, f"{load['angle']:.0f}°", (center[0]-20, center[1]+30), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-    
-    # 短辺中点を表示（荷重の場合）
-    if "short_midpoints" in load:
-        midpoint1, midpoint2 = load["short_midpoints"]
-        # 短辺中点を小さな円で表示
-        cv2.circle(bbox_img, tuple(midpoint1.astype(int)), 5, (0, 165, 255), -1)  # オレンジ
-        cv2.circle(bbox_img, tuple(midpoint2.astype(int)), 5, (0, 165, 255), -1)  # オレンジ
-        # 短辺中点を結ぶ線（矢印軸）を表示
-        cv2.line(bbox_img, tuple(midpoint1.astype(int)), tuple(midpoint2.astype(int)), 
-                (0, 165, 255), 2)  # オレンジ
-
-# 元画像を更新（バウンディングボックス付き）
-with col1:
-    st.image(cv2.cvtColor(bbox_img, cv2.COLOR_BGR2RGB), caption="検出結果（バウンディングボックス表示）", use_container_width=True)
-    
-    # 検出統計を表示
-    st.markdown("**検出統計**")
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("支点", len(supports))
-    with col_b:
-        st.metric("梁", len(beams))
-    with col_c:
-        st.metric("荷重", len(loads))
-    
-    # 凡例を表示
-    st.markdown("**凡例**")
-    st.markdown("""
-    - 🔴 **赤**: 支点 (pin, roller, fixed, hinge)
-    - 🔵 **青**: 梁 (beam)
-    - 🟢 **緑**: 集中荷重 (load)
-    - 🟡 **黄**: 等分布荷重 (udl)
-    - 🟣 **マゼンタ**: 左モーメント (momentl)
-    - 🔵 **シアン**: 右モーメント (momentr)
-    - 🟠 **オレンジ円**: 荷重の短辺中点
-    - 🟠 **オレンジ線**: 矢印軸（短辺中点を結ぶ線）
-    """)
-
 # ===== 清書画像生成 =====
 cleaned = np.ones_like(img) * 255
+
+with col2:
+    st.subheader("🎨 清書図")
 
 # 梁を描画（接続後の節点座標を使用）
 for conn in beam_connections:
