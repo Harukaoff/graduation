@@ -313,6 +313,33 @@ with st.sidebar:
     
     st.header("⚙️ 解析設定")
     
+    # 検出精度向上のための設定
+    st.subheader("🔍 検出精度設定")
+    
+    # 画像サイズ設定
+    img_size = st.selectbox(
+        "画像解析サイズ",
+        [640, 800, 1024, 1280],
+        index=0,
+        help="大きいサイズほど小さな要素も検出しやすくなりますが、処理時間が長くなります"
+    )
+    
+    # 検出後処理設定
+    iou_threshold = st.slider(
+        "重複除去閾値 (IoU)",
+        0.1, 0.9, 0.45, 0.05,
+        help="重複検出の除去基準。低いほど重複を厳しく除去します"
+    )
+    
+    # 最大検出数
+    max_det = st.slider(
+        "最大検出数",
+        100, 1000, 300, 50,
+        help="1枚の画像で検出する要素の最大数"
+    )
+    
+    st.markdown("---")
+    
     # 信頼度設定方式の選択
     auto_conf = st.checkbox("🤖 自動信頼度調整", value=True, help="解析可能な構造が検出されるまで信頼度を自動調整します")
     
@@ -322,6 +349,23 @@ with st.sidebar:
     else:
         conf_th = st.slider("🎯 検出信頼度", 0.1, 0.9, 0.5, 0.05, 
                            help="値が高いほど確実な検出のみを採用します")
+    
+    # 画像前処理オプション
+    st.subheader("🖼️ 画像前処理")
+    
+    enable_preprocessing = st.checkbox("画像前処理を有効にする", help="コントラスト調整や輪郭強調で検出精度を向上")
+    
+    if enable_preprocessing:
+        # コントラスト調整
+        contrast_factor = st.slider("コントラスト調整", 0.5, 2.0, 1.0, 0.1)
+        
+        # 輪郭強調
+        edge_enhancement = st.checkbox("輪郭強調", value=False)
+        
+        # ノイズ除去
+        noise_reduction = st.checkbox("ノイズ除去", value=False)
+    
+    st.markdown("---")
     
     # 固定値設定
     young = 2.0e2
@@ -345,6 +389,26 @@ with st.sidebar:
     - 等分布荷重: `{udl_value:.1f}`
     """)
 
+def preprocess_image(img, contrast_factor=1.0, edge_enhancement=False, noise_reduction=False):
+    """画像前処理を実行"""
+    processed_img = img.copy()
+    
+    # コントラスト調整
+    if contrast_factor != 1.0:
+        processed_img = cv2.convertScaleAbs(processed_img, alpha=contrast_factor, beta=0)
+    
+    # ノイズ除去
+    if noise_reduction:
+        processed_img = cv2.bilateralFilter(processed_img, 9, 75, 75)
+    
+    # 輪郭強調
+    if edge_enhancement:
+        # ガウシアンブラーを適用してからシャープニング
+        blurred = cv2.GaussianBlur(processed_img, (3, 3), 0)
+        processed_img = cv2.addWeighted(processed_img, 1.5, blurred, -0.5, 0)
+    
+    return processed_img
+
 uploaded = st.file_uploader("📷 構造図画像をアップロード", type=["png", "jpg", "jpeg"])
 
 if uploaded is None:
@@ -354,9 +418,23 @@ if uploaded is None:
 img_pil = Image.open(uploaded).convert("RGB")
 img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
+# 画像前処理を適用
+if enable_preprocessing:
+    img = preprocess_image(
+        img, 
+        contrast_factor=contrast_factor,
+        edge_enhancement=edge_enhancement,
+        noise_reduction=noise_reduction
+    )
+    # 前処理後の画像をPIL形式にも変換
+    img_pil_processed = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+else:
+    img_pil_processed = img_pil
+
 col1, col2 = st.columns(2)
 with col1:
-    st.image(img_pil, caption="元画像", use_container_width=True)
+    caption = "前処理後画像" if enable_preprocessing else "元画像"
+    st.image(img_pil_processed, caption=caption, use_container_width=True)
 
 TEMPL = {k: load_template_rgba(template_path(k)) for k in TEMPLATE_FILES}
 
@@ -403,8 +481,8 @@ with st.spinner("画像認識中..."):
             status_text.text(f"信頼度 {test_conf:.1f} で検出中...")
             progress_bar.progress((idx + 1) / len(conf_candidates))
             
-            # テスト実行
-            test_res = model(img, conf=test_conf, imgsz=640)[0]
+            # テスト実行（改良された設定を使用）
+            test_res = model(img, conf=test_conf, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
             test_obb = test_res.obb
             
             # 要素数をカウント
@@ -443,10 +521,10 @@ with st.spinner("画像認識中..."):
             st.info(f"🎯 自動調整結果: 信頼度 {conf_th:.1f} を使用")
         else:
             conf_th = 0.2
-            res = model(img, conf=conf_th, imgsz=640)[0]
+            res = model(img, conf=conf_th, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
     else:
-        # 手動モード
-        res = model(img, conf=conf_th, imgsz=640)[0]
+        # 手動モード（改良された設定を使用）
+        res = model(img, conf=conf_th, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
     
     # 固定閾値を使用
     y_align_th = base_y_align_th
@@ -2087,8 +2165,13 @@ with st.expander("🔍 検出詳細情報"):
     st.write(f"**使用された設定**")
     mode_text = "自動調整" if auto_conf else "手動設定"
     st.write(f"- 検出信頼度: {conf_th:.2f} ({mode_text})")
-    st.write(f"- 高さ揃え閾値: {y_align_th:.1f}px")
-    st.write(f"- 接続閾値: {node_connect_th:.1f}px")
+    st.write(f"- 画像解析サイズ: {img_size}px")
+    st.write(f"- IoU閾値: {iou_threshold:.2f}")
+    st.write(f"- 最大検出数: {max_det}")
+    if enable_preprocessing:
+        st.write(f"- 前処理: コントラスト{contrast_factor:.1f}x" + 
+                (", 輪郭強調" if edge_enhancement else "") +
+                (", ノイズ除去" if noise_reduction else ""))
     st.write(f"- 画像サイズ: {img_width}x{img_height}px")
     
     st.write(f"\n**検出された要素**")
