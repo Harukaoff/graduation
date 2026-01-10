@@ -1542,20 +1542,85 @@ if beams_to_split:
     # 梁のリストを更新
     beam_connections = new_beam_connections
 
-# ===== 清書画像生成 =====
-cleaned = np.ones_like(img) * 255
+# ===== バウンディングボックス表示画像生成 =====
+bbox_img = img.copy()
+
+# 色の定義（BGR形式）
+colors = {
+    'support': (0, 0, 255),    # 赤：支点
+    'beam': (255, 0, 0),       # 青：梁
+    'load': (0, 255, 0),       # 緑：荷重
+    'udl': (0, 255, 255),      # 黄：等分布荷重
+    'momentl': (255, 0, 255),  # マゼンタ：左モーメント
+    'momentr': (255, 255, 0)   # シアン：右モーメント
+}
+
+# 検出された全要素のバウンディングボックスを描画
+for support in supports:
+    pts = support["pts"].astype(int)
+    color = colors.get('support', (128, 128, 128))
+    cv2.polylines(bbox_img, [pts], True, color, 3)
+    # ラベルを描画
+    center = pts.mean(axis=0).astype(int)
+    cv2.putText(bbox_img, f"{support['type']}", (center[0]-20, center[1]-10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    # 信頼度を表示
+    cv2.putText(bbox_img, f"{support['conf']:.2f}", (center[0]-20, center[1]+15), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+for beam in beams:
+    pts = beam["pts"].astype(int)
+    color = colors.get('beam', (128, 128, 128))
+    cv2.polylines(bbox_img, [pts], True, color, 3)
+    # ラベルを描画
+    center = pts.mean(axis=0).astype(int)
+    cv2.putText(bbox_img, "beam", (center[0]-20, center[1]-10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    # 信頼度を表示
+    cv2.putText(bbox_img, f"{beam['conf']:.2f}", (center[0]-20, center[1]+15), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+for load in loads:
+    pts = load["pts"].astype(int)
+    load_type = load["type"]
+    color = colors.get(load_type, (128, 128, 128))
+    cv2.polylines(bbox_img, [pts], True, color, 3)
+    # ラベルを描画
+    center = pts.mean(axis=0).astype(int)
+    cv2.putText(bbox_img, load_type, (center[0]-20, center[1]-10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    # 信頼度と角度を表示
+    cv2.putText(bbox_img, f"{load['conf']:.2f}", (center[0]-20, center[1]+15), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    cv2.putText(bbox_img, f"{load['angle']:.0f}°", (center[0]-20, center[1]+30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+with col1:
+    st.image(cv2.cvtColor(bbox_img, cv2.COLOR_BGR2RGB), caption="検出結果", use_container_width=True)
 
 with col2:
-    st.subheader("🎨 清書図")
+    # ===== 清書画像生成 =====
+    cleaned = np.ones_like(img) * 255
 
-# 梁を描画（接続後の節点座標を使用）
-for conn in beam_connections:
-    # 接続後の節点座標を取得
-    node1_idx = conn["node1_idx"]
-    node2_idx = conn["node2_idx"]
-    pt1 = np.array(all_nodes[node1_idx])
-    pt2 = np.array(all_nodes[node2_idx])
-    cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (80, 80, 80), 8)
+    # 梁を描画（接続後の節点座標を使用、15度刻みで補正）
+    for conn in beam_connections:
+        # 接続後の節点座標を取得
+        node1_idx = conn["node1_idx"]
+        node2_idx = conn["node2_idx"]
+        pt1 = np.array(all_nodes[node1_idx])
+        pt2 = np.array(all_nodes[node2_idx])
+        
+        # 15度刻みに角度を補正
+        vector = pt2 - pt1
+        angle = math.degrees(math.atan2(vector[1], vector[0]))
+        corrected_angle = round(angle / 15) * 15
+        
+        # 補正後の座標を計算
+        length = np.linalg.norm(vector)
+        angle_rad = math.radians(corrected_angle)
+        pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2_corrected)), (80, 80, 80), 8)
 
 # 支点を描画（テンプレート上端が節点位置になるように配置）
 for i, s in enumerate(supports):
@@ -2180,7 +2245,7 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 元の形状（太い黒線）- 15度刻みで角度補正
+    # 変形前の形状（グレー）- 15度刻みで角度補正
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
         pt2 = np.array(conn["node2_coord"])
@@ -2195,9 +2260,9 @@ try:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4, label='元形状' if conn == beam_connections[0] else '')
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7, label='変形前' if conn == beam_connections[0] else '')
     
-    # 変形後の形状（太い赤線、スケール拡大済み）- 15度刻みで角度補正
+    # 変形後の形状（黒）- 15度刻みで角度補正
     for df in fig_list_deform_scaled:
         # 各点間を15度刻みで補正
         corrected_x = []
@@ -2223,7 +2288,7 @@ try:
             corrected_x.append(pt2_corrected[0])
             corrected_y.append(pt2_corrected[1])
         
-        ax.plot(corrected_x, corrected_y, 'r-', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
+        ax.plot(corrected_x, corrected_y, 'black', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
     
     # 節点
     for i, row in nodes_df.iterrows():
@@ -2301,7 +2366,6 @@ try:
         ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
     
     for df in fig_list:
-        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
         ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
         ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
                list(df['y']) + list(df['Ny'][::-1]), 
@@ -2340,7 +2404,6 @@ try:
         ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
     
     for df in fig_list:
-        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
         ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
         ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
                list(df['y']) + list(df['Qy'][::-1]), 
@@ -2379,7 +2442,6 @@ try:
         ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
     
     for df in fig_list:
-        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
         ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
         ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
                list(df['y']) + list(df['My'][::-1]), 
