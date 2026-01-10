@@ -2504,6 +2504,8 @@ try:
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
     ax.invert_yaxis()
+    st.pyplot(fig)
+
 except Exception as e:
     st.error(f"❌ 解析エラー: {str(e)}")
     st.exception(e)
