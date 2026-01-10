@@ -653,7 +653,7 @@ def calculate_bbox_overlap(pts1, pts2):
     return 0
 
 beams_to_remove_duplicate = []
-overlap_threshold = 0.7  # 70%以上重なっていたら重複とみなす
+overlap_threshold = 0.3  # 30%以上重なっていたら重複とみなす
 
 for i in range(len(beams)):
     if i in beams_to_remove_duplicate:
@@ -2352,7 +2352,7 @@ try:
     st.dataframe(D_R, use_container_width=True)
     
     # 変形図の表示
-    st.write("**🔄 変形図**")
+    st.write("**変形図**")
     
     # draw_lib.make_figureを使用して変形図を作成
     fig_list_deform = draw_lib.make_figure(M_S)
@@ -2459,7 +2459,7 @@ try:
     st.pyplot(fig)
     
     # 応力図の表示
-    st.write("**📊 応力図**")
+    st.write("**応力図**")
     
     # 応力図用のデータを作成（スケール調整なし）
     fig_list_original = draw_lib.make_figure(M_S)
