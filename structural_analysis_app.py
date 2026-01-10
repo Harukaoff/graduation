@@ -2220,173 +2220,267 @@ try:
     # 結果表示
     st.subheader("📊 解析結果")
     
-    tab_r1, tab_r2, tab_r3 = st.tabs(["変位・反力", "変形図", "応力図"])
+    # 変位・反力の表示
+    st.write("**節点変位・反力**")
+    st.dataframe(D_R, use_container_width=True)
     
-    with tab_r1:
-        st.write("**節点変位・反力**")
-        st.dataframe(D_R, use_container_width=True)
+    # 変形図の表示
+    st.write("**🔄 変形図**")
     
-    with tab_r2:
-        # draw_lib.make_figureを使用して変形図を作成
-        fig_list_deform = draw_lib.make_figure(M_S)
-        
-        # 変形量のスケールを拡大（最大変位を構造の1/10程度に）
-        max_displacement = 0
-        for df in fig_list_deform:
-            for i in range(len(df)):
-                dx = df.loc[i, 'ax'] - df.loc[i, 'x']
-                dy = df.loc[i, 'ay'] - df.loc[i, 'y']
-                disp = np.sqrt(dx**2 + dy**2)
-                max_displacement = max(max_displacement, disp)
-        
-        # 構造の代表長さを計算
-        all_coords = []
-        for conn in beam_connections:
-            all_coords.append(conn["node1_coord"])
-            all_coords.append(conn["node2_coord"])
-        all_coords = np.array(all_coords)
-        structure_size = np.max(np.ptp(all_coords, axis=0))
-        
-        # スケール係数を計算（構造の1/10を目標）
-        if max_displacement > 1e-6:
-            scale_factor = (structure_size / 10) / max_displacement
-        else:
-            scale_factor = 1.0
-        
-        # 変形をスケール拡大
-        fig_list_deform_scaled = []
-        for df in fig_list_deform:
-            df_scaled = df.copy()
-            for i in range(len(df_scaled)):
-                dx = df_scaled.loc[i, 'ax'] - df_scaled.loc[i, 'x']
-                dy = df_scaled.loc[i, 'ay'] - df_scaled.loc[i, 'y']
-                df_scaled.loc[i, 'ax'] = df_scaled.loc[i, 'x'] + dx * scale_factor
-                df_scaled.loc[i, 'ay'] = df_scaled.loc[i, 'y'] + dy * scale_factor
-            fig_list_deform_scaled.append(df_scaled)
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
-        ax.set_aspect('equal')
-        ax.grid(True, alpha=0.3)
-        ax.set_title(f"変形図（変形倍率: {scale_factor:.1f}倍）", fontsize=16, fontweight='bold')
-        
-        # 元の形状（太い黒線）
-        for conn in beam_connections:
-            pt1 = np.array(conn["node1_coord"])
-            pt2 = np.array(conn["node2_coord"])
-            ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4, label='元形状' if conn == beam_connections[0] else '')
-        
-        # 変形後の形状（太い赤線、スケール拡大済み）
-        for df in fig_list_deform_scaled:
-            ax.plot(df['ax'], df['ay'], 'r-', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
-        
-        # 節点
-        for i, row in nodes_df.iterrows():
-            ax.plot(row['x'], row['y'], 'ko', markersize=8)
-            ax.text(row['x'], row['y'], f'  N{i}', fontsize=10)
-        
-        ax.legend()
-        ax.invert_yaxis()
-        st.pyplot(fig)
+    # draw_lib.make_figureを使用して変形図を作成
+    fig_list_deform = draw_lib.make_figure(M_S)
     
-    with tab_r3:
-        # 応力図用のデータを作成（スケール調整なし）
-        fig_list_original = draw_lib.make_figure(M_S)
+    # 変形量のスケールを拡大（最大変位を構造の1/10程度に）
+    max_displacement = 0
+    for df in fig_list_deform:
+        for i in range(len(df)):
+            dx = df.loc[i, 'ax'] - df.loc[i, 'x']
+            dy = df.loc[i, 'ay'] - df.loc[i, 'y']
+            disp = np.sqrt(dx**2 + dy**2)
+            max_displacement = max(max_displacement, disp)
+    
+    # 構造の代表長さを計算
+    all_coords = []
+    for conn in beam_connections:
+        all_coords.append(conn["node1_coord"])
+        all_coords.append(conn["node2_coord"])
+    all_coords = np.array(all_coords)
+    structure_size = np.max(np.ptp(all_coords, axis=0))
+    
+    # スケール係数を計算（構造の1/10を目標）
+    if max_displacement > 1e-6:
+        scale_factor = (structure_size / 10) / max_displacement
+    else:
+        scale_factor = 1.0
+    
+    # 変形をスケール拡大
+    fig_list_deform_scaled = []
+    for df in fig_list_deform:
+        df_scaled = df.copy()
+        for i in range(len(df_scaled)):
+            dx = df_scaled.loc[i, 'ax'] - df_scaled.loc[i, 'x']
+            dy = df_scaled.loc[i, 'ay'] - df_scaled.loc[i, 'y']
+            df_scaled.loc[i, 'ax'] = df_scaled.loc[i, 'x'] + dx * scale_factor
+            df_scaled.loc[i, 'ay'] = df_scaled.loc[i, 'y'] + dy * scale_factor
+        fig_list_deform_scaled.append(df_scaled)
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.set_aspect('equal')
+    
+    # 元の形状（太い黒線）- 15度刻みで角度補正
+    for conn in beam_connections:
+        pt1 = np.array(conn["node1_coord"])
+        pt2 = np.array(conn["node2_coord"])
         
-        # 平均部材長を計算
-        avg_beam_length = elements_df['length'].mean() if len(elements_df) > 0 else 100
-        target_stress_display = avg_beam_length / 4  # 最大応力を部材長の1/4に
+        # 15度刻みに角度を補正
+        vector = pt2 - pt1
+        angle = math.degrees(math.atan2(vector[1], vector[0]))
+        corrected_angle = round(angle / 15) * 15
         
-        # 各応力の最大値を計算
-        max_N = max([abs(df['N']).max() for df in fig_list_original] + [1e-6])
-        max_Q = max([abs(df['Q']).max() for df in fig_list_original] + [1e-6])
-        max_M = max([abs(df['M']).max() for df in fig_list_original] + [1e-6])
+        # 補正後の座標を計算
+        length = np.linalg.norm(vector)
+        angle_rad = math.radians(corrected_angle)
+        pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        # スケール係数を計算
-        scale_N = target_stress_display / max_N
-        scale_Q = target_stress_display / max_Q
-        scale_M = target_stress_display / max_M
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4, label='元形状' if conn == beam_connections[0] else '')
+    
+    # 変形後の形状（太い赤線、スケール拡大済み）- 15度刻みで角度補正
+    for df in fig_list_deform_scaled:
+        # 各点間を15度刻みで補正
+        corrected_x = []
+        corrected_y = []
         
-        # スケール調整した応力図データを作成
-        fig_list = []
-        for df in fig_list_original:
-            df_scaled = df.copy()
-            # 応力値をスケール調整
-            df_scaled['N'] = df['N'] * scale_N
-            df_scaled['Q'] = df['Q'] * scale_Q
-            df_scaled['M'] = df['M'] * scale_M
-            # 座標もスケール調整
-            df_scaled['Nx'] = df['x'] + (df['Nx'] - df['x']) * scale_N
-            df_scaled['Ny'] = df['y'] + (df['Ny'] - df['y']) * scale_N
-            df_scaled['Qx'] = df['x'] + (df['Qx'] - df['x']) * scale_Q
-            df_scaled['Qy'] = df['y'] + (df['Qy'] - df['y']) * scale_Q
-            df_scaled['Mx'] = df['x'] + (df['Mx'] - df['x']) * scale_M
-            df_scaled['My'] = df['y'] + (df['My'] - df['y']) * scale_M
-            fig_list.append(df_scaled)
+        for i in range(len(df) - 1):
+            pt1 = np.array([df.iloc[i]['ax'], df.iloc[i]['ay']])
+            pt2 = np.array([df.iloc[i+1]['ax'], df.iloc[i+1]['ay']])
+            
+            # 15度刻みに角度を補正
+            vector = pt2 - pt1
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            
+            # 補正後の座標を計算
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            if i == 0:
+                corrected_x.append(pt1[0])
+                corrected_y.append(pt1[1])
+            corrected_x.append(pt2_corrected[0])
+            corrected_y.append(pt2_corrected[1])
         
-        stress_tabs = st.tabs(["軸力図(N)", "せん断力図(Q)", "曲げモーメント図(M)"])
+        ax.plot(corrected_x, corrected_y, 'r-', linewidth=6, label='変形後' if df is fig_list_deform_scaled[0] else '')
+    
+    # 節点
+    for i, row in nodes_df.iterrows():
+        ax.plot(row['x'], row['y'], 'ko', markersize=8)
+        ax.text(row['x'], row['y'], f'  N{i}', fontsize=10)
+    
+    # 軸、タイトル、枠線を削除
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.legend()
+    ax.invert_yaxis()
+    st.pyplot(fig)
+    
+    # 応力図の表示
+    st.write("**📊 応力図**")
+    
+    # 応力図用のデータを作成（スケール調整なし）
+    fig_list_original = draw_lib.make_figure(M_S)
+    
+    # 平均部材長を計算
+    avg_beam_length = elements_df['length'].mean() if len(elements_df) > 0 else 100
+    target_stress_display = avg_beam_length / 4  # 最大応力を部材長の1/4に
+    
+    # 各応力の最大値を計算
+    max_N = max([abs(df['N']).max() for df in fig_list_original] + [1e-6])
+    max_Q = max([abs(df['Q']).max() for df in fig_list_original] + [1e-6])
+    max_M = max([abs(df['M']).max() for df in fig_list_original] + [1e-6])
+    
+    # スケール係数を計算
+    scale_N = target_stress_display / max_N
+    scale_Q = target_stress_display / max_Q
+    scale_M = target_stress_display / max_M
+    
+    # スケール調整した応力図データを作成
+    fig_list = []
+    for df in fig_list_original:
+        df_scaled = df.copy()
+        # 応力値をスケール調整
+        df_scaled['N'] = df['N'] * scale_N
+        df_scaled['Q'] = df['Q'] * scale_Q
+        df_scaled['M'] = df['M'] * scale_M
+        # 座標もスケール調整
+        df_scaled['Nx'] = df['x'] + (df['Nx'] - df['x']) * scale_N
+        df_scaled['Ny'] = df['y'] + (df['Ny'] - df['y']) * scale_N
+        df_scaled['Qx'] = df['x'] + (df['Qx'] - df['x']) * scale_Q
+        df_scaled['Qy'] = df['y'] + (df['Qy'] - df['y']) * scale_Q
+        df_scaled['Mx'] = df['x'] + (df['Mx'] - df['x']) * scale_M
+        df_scaled['My'] = df['y'] + (df['My'] - df['y']) * scale_M
+        fig_list.append(df_scaled)
+    
+    # 軸力図(N)
+    st.write("**軸力図 (N)**")
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.set_aspect('equal')
+    
+    # 部材を15度刻みで表示
+    for conn in beam_connections:
+        pt1 = np.array(conn["node1_coord"])
+        pt2 = np.array(conn["node2_coord"])
         
-        with stress_tabs[0]:
-            fig, ax = plt.subplots(figsize=(12, 8))
-            ax.set_aspect('equal')
-            ax.grid(True, alpha=0.3)
-            ax.set_title("軸力図 (N)", fontsize=16, fontweight='bold')
-            
-            for conn in beam_connections:
-                pt1 = np.array(conn["node1_coord"])
-                pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
-            
-            for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
-                ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
-                ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
-                       list(df['y']) + list(df['Ny'][::-1]), 
-                       'blue', alpha=0.3)
-            
-            ax.invert_yaxis()
-            st.pyplot(fig)
+        # 15度刻みに角度を補正
+        vector = pt2 - pt1
+        angle = math.degrees(math.atan2(vector[1], vector[0]))
+        corrected_angle = round(angle / 15) * 15
         
-        with stress_tabs[1]:
-            fig, ax = plt.subplots(figsize=(12, 8))
-            ax.set_aspect('equal')
-            ax.grid(True, alpha=0.3)
-            ax.set_title("せん断力図 (Q)", fontsize=16, fontweight='bold')
-            
-            for conn in beam_connections:
-                pt1 = np.array(conn["node1_coord"])
-                pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
-            
-            for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
-                ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
-                ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
-                       list(df['y']) + list(df['Qy'][::-1]), 
-                       'green', alpha=0.3)
-            
-            ax.invert_yaxis()
-            st.pyplot(fig)
+        # 補正後の座標を計算
+        length = np.linalg.norm(vector)
+        angle_rad = math.radians(corrected_angle)
+        pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        with stress_tabs[2]:
-            fig, ax = plt.subplots(figsize=(12, 8))
-            ax.set_aspect('equal')
-            ax.grid(True, alpha=0.3)
-            ax.set_title("曲げモーメント図 (M)", fontsize=16, fontweight='bold')
-            
-            for conn in beam_connections:
-                pt1 = np.array(conn["node1_coord"])
-                pt2 = np.array(conn["node2_coord"])
-                ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6, alpha=0.4)
-            
-            for df in fig_list:
-                ax.plot(df['x'], df['y'], 'k-', linewidth=5)
-                ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
-                ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
-                       list(df['y']) + list(df['My'][::-1]), 
-                       'red', alpha=0.3)
-            
-            ax.invert_yaxis()
-            st.pyplot(fig)
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+    
+    for df in fig_list:
+        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
+        ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
+        ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
+               list(df['y']) + list(df['Ny'][::-1]), 
+               'blue', alpha=0.3)
+    
+    # 軸、タイトル、枠線を削除
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.invert_yaxis()
+    st.pyplot(fig)
+    
+    # せん断力図(Q)
+    st.write("**せん断力図 (Q)**")
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.set_aspect('equal')
+    
+    # 部材を15度刻みで表示
+    for conn in beam_connections:
+        pt1 = np.array(conn["node1_coord"])
+        pt2 = np.array(conn["node2_coord"])
+        
+        # 15度刻みに角度を補正
+        vector = pt2 - pt1
+        angle = math.degrees(math.atan2(vector[1], vector[0]))
+        corrected_angle = round(angle / 15) * 15
+        
+        # 補正後の座標を計算
+        length = np.linalg.norm(vector)
+        angle_rad = math.radians(corrected_angle)
+        pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+    
+    for df in fig_list:
+        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
+        ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
+        ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
+               list(df['y']) + list(df['Qy'][::-1]), 
+               'green', alpha=0.3)
+    
+    # 軸、タイトル、枠線を削除
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.invert_yaxis()
+    st.pyplot(fig)
+    
+    # 曲げモーメント図(M)
+    st.write("**曲げモーメント図 (M)**")
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.set_aspect('equal')
+    
+    # 部材を15度刻みで表示
+    for conn in beam_connections:
+        pt1 = np.array(conn["node1_coord"])
+        pt2 = np.array(conn["node2_coord"])
+        
+        # 15度刻みに角度を補正
+        vector = pt2 - pt1
+        angle = math.degrees(math.atan2(vector[1], vector[0]))
+        corrected_angle = round(angle / 15) * 15
+        
+        # 補正後の座標を計算
+        length = np.linalg.norm(vector)
+        angle_rad = math.radians(corrected_angle)
+        pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6, alpha=0.4)
+    
+    for df in fig_list:
+        ax.plot(df['x'], df['y'], 'k-', linewidth=5)
+        ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
+        ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
+               list(df['y']) + list(df['My'][::-1]), 
+               'red', alpha=0.3)
+    
+    # 軸、タイトル、枠線を削除
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.invert_yaxis()
+    st.pyplot(fig)
     
     st.balloons()
 
