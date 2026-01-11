@@ -44,11 +44,11 @@ if not os.path.exists(TEMPLATE_DIR):
 MODEL_PATH = os.getenv("MODEL_PATH", MODEL_PATH)
 TEMPLATE_DIR = os.getenv("TEMPLATE_DIR", TEMPLATE_DIR)
 TEMPLATE_FILES = {
-    "pin": "pin.png",
-    "roller": "roller.png",
-    "fixed": "fixed.png",
+    "pin": "pin.jpg",
+    "roller": "roller.jpg",
+    "fixed": "fixed.jpg",
     "beam": "beam.png",
-    "load": "load.png",
+    "load": "load.jpg",
     "momentl": "momentL.png",
     "momentr": "momentR.png",
     "udl": "UDL.png",
