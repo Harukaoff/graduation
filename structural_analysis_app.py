@@ -450,7 +450,7 @@ img_height, img_width = img.shape[:2]
 
 # 画像サイズに応じた閾値（画像の5%程度）
 base_y_align_th = min(150.0, img_height * 0.05)
-base_node_connect_th = min(100.0, max(img_width, img_height) * 0.03)  # 3%程度に縮小
+base_node_connect_th = min(150.0, max(img_width, img_height) * 0.05)  # 5%に拡大（接続しやすく）
 
 def is_valid_structure(supports_count, beams_count, loads_count):
     """解析可能な構造かどうかを判定"""
@@ -783,8 +783,8 @@ if len(beam_endpoints) == 1 and len(supports) == 2:
     # 各支点に最も近い梁端点を決定
 else:
     # 通常ケース：支点から最も近い梁端点を探してクラスタに追加
-    # 支点接続用の閾値を大きくする（通常の8倍）
-    support_connect_th = node_connect_th * 8
+    # 支点接続用の閾値を大きくする（通常の12倍）
+    support_connect_th = node_connect_th * 12
 
     support_to_beam_connections = []
     for support_idx in range(len(supports)):
@@ -872,7 +872,7 @@ for h_idx in horizontal_beams:
         min_dist_combo = min(distances, key=lambda x: x[2])
         
         # 閾値内なら接続候補として記録
-        if min_dist_combo[2] < node_connect_th * 1.5:  # 閾値を1.5倍に拡大
+        if min_dist_combo[2] < node_connect_th * 2.0:  # 閾値を2.0倍に拡大
             hv_connections.append({
                 "ep1_idx": min_dist_combo[0],
                 "ep2_idx": min_dist_combo[1],
@@ -1147,7 +1147,7 @@ def find_unconnected_beam_endpoints(beam_connections, all_nodes, node_info):
     
     return support_nodes, unconnected_nodes
 
-def add_missing_beams(beam_connections, all_nodes, node_info, max_distance=200):
+def add_missing_beams(beam_connections, all_nodes, node_info, max_distance=300):
     """支点から未接続節点への梁を自動追加"""
     support_nodes, unconnected_nodes = find_unconnected_beam_endpoints(beam_connections, all_nodes, node_info)
     
