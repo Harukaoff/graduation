@@ -1003,6 +1003,20 @@ for cluster_info in endpoint_clusters:
     # 支点に接続されている場合は、その支点を使用
     if connected_support >= 0:
         node_idx = connected_support
+        # 支点位置を梁端点に合わせて調整
+        support_original_coord = all_nodes[connected_support]
+        if len(cluster_points) > 0:
+            # クラスタの中心（梁端点）に支点を移動
+            adjusted_support_coord = cluster_center
+            all_nodes[connected_support] = adjusted_support_coord
+            # 支点情報も更新
+            supports[connected_support]["node"] = adjusted_support_coord
+            
+            # 移動距離を計算
+            move_distance = np.linalg.norm(adjusted_support_coord - support_original_coord)
+            if move_distance > 5.0:  # 5px以上移動した場合のみ表示
+                st.info(f"🔧 支点N{connected_support}を梁端点に調整 (移動距離: {move_distance:.1f}px)")
+        
         node_coord = all_nodes[connected_support]
     else:
         # 既存の節点（支点）に近いかチェック
@@ -2451,10 +2465,10 @@ with tab3:
             st.info("荷重が設定されていません")
 
 def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
-    """応力図データを15度補正済みの部材に合わせて調整（元の梁として一直線で表示）"""
+    """応力図データを15度補正済みの部材に合わせて調整（統合梁も含めて一直線で表示）"""
     adjusted_fig_list = []
     
-    # 元の梁ごとにセグメントをグループ化
+    # 元の梁ごとにセグメントをグループ化（統合梁も考慮）
     original_beams = {}
     for i, conn in enumerate(beam_connections):
         original_beam_idx = conn["beam_idx"]
@@ -2466,10 +2480,23 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
     for original_beam_idx, segments in original_beams.items():
         # 元の梁の端点を特定
         if len(segments) == 1:
-            # 分割されていない梁
+            # 分割されていない梁（統合梁を含む）
             seg_idx, conn = segments[0]
             pt1_orig = np.array(conn["node1_coord"])
             pt2_orig = np.array(conn["node2_coord"])
+            
+            # 統合梁の場合は、既に一直線に補正されているのでそのまま使用
+            if conn.get("is_merged", False):
+                # 統合梁は既に15度刻みで補正済み
+                pt2_corrected = pt2_orig
+            else:
+                # 通常梁は15度刻みに補正
+                vector = pt2_orig - pt1_orig
+                angle = math.degrees(math.atan2(vector[1], vector[0]))
+                corrected_angle = round(angle / 15) * 15
+                length = np.linalg.norm(vector)
+                angle_rad = math.radians(corrected_angle)
+                pt2_corrected = pt1_orig + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         else:
             # 分割された梁：全セグメントの端点を収集して最も離れた2点を見つける
             all_endpoints = []
@@ -2488,14 +2515,14 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
                     if dist > max_dist:
                         max_dist = dist
                         pt1_orig, pt2_orig = coord1, coord2
-        
-        # 15度刻みに補正された部材の端点
-        vector = pt2_orig - pt1_orig
-        angle = math.degrees(math.atan2(vector[1], vector[0]))
-        corrected_angle = round(angle / 15) * 15
-        length = np.linalg.norm(vector)
-        angle_rad = math.radians(corrected_angle)
-        pt2_corrected = pt1_orig + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            # 15度刻みに補正
+            vector = pt2_orig - pt1_orig
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1_orig + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
         # この元の梁に属する全セグメントのデータを結合
         combined_df = None
@@ -2509,6 +2536,57 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
                     combined_df = pd.concat([combined_df, df], ignore_index=True)
         
         if combined_df is not None:
+            df_adjusted = combined_df.copy()
+            
+            # 部材上の各点を補正済み部材上の対応点に変換
+            for j in range(len(df_adjusted)):
+                # 元の部材上での位置比率を計算
+                orig_point = np.array([combined_df.iloc[j]['x'], combined_df.iloc[j]['y']])
+                
+                # 元の部材の方向ベクトル
+                orig_vector = pt2_orig - pt1_orig
+                orig_length = np.linalg.norm(orig_vector)
+                
+                if orig_length > 0:
+                    # 元の部材上での位置比率
+                    t = np.dot(orig_point - pt1_orig, orig_vector) / (orig_length ** 2)
+                    t = max(0, min(1, t))  # 0-1の範囲にクランプ
+                    
+                    # 補正済み部材上の対応点
+                    corrected_point = pt1_orig + t * (pt2_corrected - pt1_orig)
+                    
+                    # 座標を更新
+                    df_adjusted.iloc[j, df_adjusted.columns.get_loc('x')] = corrected_point[0]
+                    df_adjusted.iloc[j, df_adjusted.columns.get_loc('y')] = corrected_point[1]
+                    
+                    # 応力図の座標も同様に調整
+                    if 'Nx' in df_adjusted.columns:
+                        # 軸力図の座標調整
+                        stress_offset = np.array([combined_df.iloc[j]['Nx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Ny'] - combined_df.iloc[j]['y']])
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Nx')] = corrected_point[0] + stress_offset[0]
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Ny')] = corrected_point[1] + stress_offset[1]
+                    
+                    if 'Qx' in df_adjusted.columns:
+                        # せん断力図の座標調整
+                        stress_offset = np.array([combined_df.iloc[j]['Qx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Qy'] - combined_df.iloc[j]['y']])
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qx')] = corrected_point[0] + stress_offset[0]
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qy')] = corrected_point[1] + stress_offset[1]
+                    
+                    if 'Mx' in df_adjusted.columns:
+                        # 曲げモーメント図の座標調整
+                        stress_offset = np.array([combined_df.iloc[j]['Mx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['My'] - combined_df.iloc[j]['y']])
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Mx')] = corrected_point[0] + stress_offset[0]
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('My')] = corrected_point[1] + stress_offset[1]
+                    
+                    # 変形図の座標も調整
+                    if 'ax' in df_adjusted.columns:
+                        deform_offset = np.array([combined_df.iloc[j]['ax'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['ay'] - combined_df.iloc[j]['y']])
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('ax')] = corrected_point[0] + deform_offset[0]
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('ay')] = corrected_point[1] + deform_offset[1]
+            
+            adjusted_fig_list.append(df_adjusted)
+    
+    return adjusted_fig_list
             df_adjusted = combined_df.copy()
             
             # 部材上の各点を補正済み部材上の対応点に変換
