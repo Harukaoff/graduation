@@ -2587,47 +2587,6 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
             adjusted_fig_list.append(df_adjusted)
     
     return adjusted_fig_list
-                
-                if orig_length > 0:
-                    # 元の部材上での位置比率
-                    t = np.dot(orig_point - pt1_orig, orig_vector) / (orig_length ** 2)
-                    t = max(0, min(1, t))  # 0-1の範囲にクランプ
-                    
-                    # 補正済み部材上の対応点
-                    corrected_point = pt1_orig + t * (pt2_corrected - pt1_orig)
-                    
-                    # 座標を更新
-                    df_adjusted.iloc[j, df_adjusted.columns.get_loc('x')] = corrected_point[0]
-                    df_adjusted.iloc[j, df_adjusted.columns.get_loc('y')] = corrected_point[1]
-                    
-                    # 応力図の座標も同様に調整
-                    if 'Nx' in df_adjusted.columns:
-                        # 軸力図の座標調整
-                        stress_offset = np.array([combined_df.iloc[j]['Nx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Ny'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Nx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Ny')] = corrected_point[1] + stress_offset[1]
-                    
-                    if 'Qx' in df_adjusted.columns:
-                        # せん断力図の座標調整
-                        stress_offset = np.array([combined_df.iloc[j]['Qx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Qy'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qy')] = corrected_point[1] + stress_offset[1]
-                    
-                    if 'Mx' in df_adjusted.columns:
-                        # 曲げモーメント図の座標調整
-                        stress_offset = np.array([combined_df.iloc[j]['Mx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['My'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Mx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('My')] = corrected_point[1] + stress_offset[1]
-                    
-                    # 変形図の座標も調整
-                    if 'ax' in df_adjusted.columns:
-                        deform_offset = np.array([combined_df.iloc[j]['ax'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['ay'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('ax')] = corrected_point[0] + deform_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('ay')] = corrected_point[1] + deform_offset[1]
-            
-            adjusted_fig_list.append(df_adjusted)
-    
-    return adjusted_fig_list
 
 # FEM解析実行
 try:
