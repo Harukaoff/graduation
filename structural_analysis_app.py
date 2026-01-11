@@ -302,11 +302,6 @@ with col_title:
     st.title("InstaStruct")
     st.write("構造力学解析アプリ")
     st.caption("手書き図から自動で構造解析を行い、変形図と応力図を出力します")
-    
-    # キャッシュクリア用のボタンを追加
-    if st.button("🔄 テンプレートを再読み込み"):
-        st.cache_data.clear()
-        st.rerun()
 
 # サイドバー設定
 with st.sidebar:
@@ -441,24 +436,7 @@ with col1:
     caption = "前処理後画像" if enable_preprocessing else "元画像"
     st.image(img_pil_processed, caption=caption, use_container_width=True)
 
-TEMPL = {}
-for k in TEMPLATE_FILES:
-    path = template_path(k)
-    if path and os.path.exists(path):
-        # ファイルの更新時刻を確認
-        mtime = os.path.getmtime(path)
-        st.write(f"📁 テンプレート '{k}': {path} (更新: {mtime})")
-        template = load_template_rgba(path)
-        if template is not None:
-            TEMPL[k] = template
-            st.success(f"✅ '{k}' 読み込み成功")
-        else:
-            st.error(f"❌ '{k}' 読み込み失敗")
-    else:
-        st.error(f"❌ ファイルが見つかりません: {path}")
-
-# テンプレート読み込み結果を表示
-st.write(f"読み込まれたテンプレート数: {len(TEMPL)}/{len(TEMPLATE_FILES)}")
+TEMPL = {k: load_template_rgba(template_path(k)) for k in TEMPLATE_FILES}
 
 if not MODEL_PATH or not os.path.exists(MODEL_PATH):
     st.error(f"モデルパスが存在しません: {MODEL_PATH}")
