@@ -1153,6 +1153,9 @@ def add_missing_beams(beam_connections, all_nodes, node_info, max_distance=200):
     
     added_beams = []
     
+    # 既存の最大beam_idxを取得
+    max_beam_idx = max([conn["beam_idx"] for conn in beam_connections]) if beam_connections else -1
+    
     for support_idx in support_nodes:
         support_coord = np.array(all_nodes[support_idx])
         
@@ -1177,9 +1180,10 @@ def add_missing_beams(beam_connections, all_nodes, node_info, max_distance=200):
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             corrected_angle = round(angle / 15) * 15
             
-            # 新しい梁を追加
+            # 新しい梁を追加（ユニークなbeam_idxを使用）
+            max_beam_idx += 1
             new_beam = {
-                "beam_idx": len(beams) + len(added_beams),  # 新しいインデックス
+                "beam_idx": max_beam_idx,  # ユニークなインデックス
                 "node1_idx": support_idx,
                 "node2_idx": closest_unconnected,
                 "node1_coord": support_coord.tolist(),
@@ -1757,7 +1761,7 @@ with col2:
     cleaned = np.ones_like(img) * 255
 
     # 梁を描画（元の梁ごとに一直線で描画、15度刻みで補正）
-    # 元の梁ごとにグループ化して描画
+    # 元の梁ごとにグループ化して描画（自動追加梁も含む）
     original_beams = {}
     for conn in beam_connections:
         original_beam_idx = conn["beam_idx"]
@@ -1768,12 +1772,20 @@ with col2:
     # 各元の梁について、端点を特定して一直線で描画
     for original_beam_idx, segments in original_beams.items():
         if len(segments) == 1:
-            # 分割されていない梁
+            # 分割されていない梁（自動追加梁を含む）
             conn = segments[0]
             node1_idx = conn["node1_idx"]
             node2_idx = conn["node2_idx"]
             pt1 = np.array(all_nodes[node1_idx])
             pt2 = np.array(all_nodes[node2_idx])
+            
+            # 自動追加梁の場合は色を変える
+            if conn.get("is_auto_added", False):
+                line_color = (0, 150, 0)  # 緑色で自動追加梁を表示
+                line_thickness = 6
+            else:
+                line_color = (80, 80, 80)  # 通常の梁は灰色
+                line_thickness = 8
         else:
             # 分割された梁：全セグメントの端点を収集して最も離れた2点を見つける
             all_endpoints = []
@@ -1798,6 +1810,10 @@ with col2:
                     if dist > max_dist:
                         max_dist = dist
                         pt1, pt2 = coord1, coord2
+            
+            # 通常の梁色
+            line_color = (80, 80, 80)
+            line_thickness = 8
         
         # 15度刻みに角度を補正
         vector = pt2 - pt1
@@ -1809,7 +1825,7 @@ with col2:
         angle_rad = math.radians(corrected_angle)
         pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
         
-        cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2_corrected)), (80, 80, 80), 8)
+        cv2.line(cleaned, tuple(map(int, pt1)), tuple(map(int, pt2_corrected)), line_color, line_thickness)
 
 # 支点を描画（テンプレート上端が節点位置になるように配置）
 for i, s in enumerate(supports):
