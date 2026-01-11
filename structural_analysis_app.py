@@ -1781,11 +1781,11 @@ with col2:
             
             # 自動追加梁の場合は色を変える
             if conn.get("is_auto_added", False):
-                line_color = (0, 150, 0)  # 緑色で自動追加梁を表示
-                line_thickness = 6
+                line_color = (0, 100, 0)  # 濃い緑色で自動追加梁を表示
+                line_thickness = 12
             else:
-                line_color = (80, 80, 80)  # 通常の梁は灰色
-                line_thickness = 8
+                line_color = (40, 40, 40)  # 濃い灰色で通常梁を表示
+                line_thickness = 15
         else:
             # 分割された梁：全セグメントの端点を収集して最も離れた2点を見つける
             all_endpoints = []
@@ -1812,8 +1812,8 @@ with col2:
                         pt1, pt2 = coord1, coord2
             
             # 通常の梁色
-            line_color = (80, 80, 80)
-            line_thickness = 8
+            line_color = (40, 40, 40)  # 濃い灰色
+            line_thickness = 15
         
         # 15度刻みに角度を補正
         vector = pt2 - pt1
@@ -1876,20 +1876,20 @@ for i, node in enumerate(all_nodes):
     info = node_info[i] if i < len(node_info) else {"type": "unknown"}
     
     if info["type"] == "support":
-        # 支点節点（赤）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 10, (0, 0, 255), 2)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 12, int(node_coord[1]) - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        # 支点節点（濃い赤）
+        cv2.circle(cleaned, tuple(map(int, node_coord)), 15, (0, 0, 200), 5)
+        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 18, int(node_coord[1]) - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 200), 3)
     elif info["type"] == "beam_endpoint":
-        # 梁端点（青）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 8, (255, 0, 0), 2)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 12, int(node_coord[1]) - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        # 梁端点（濃い青）
+        cv2.circle(cleaned, tuple(map(int, node_coord)), 12, (200, 0, 0), 4)
+        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 15, int(node_coord[1]) - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 0, 0), 3)
     elif info["type"] == "load_point":
-        # 荷重作用点（緑）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 8, (0, 200, 0), 2)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 12, int(node_coord[1]) - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 0), 2)
+        # 荷重作用点（濃い緑）
+        cv2.circle(cleaned, tuple(map(int, node_coord)), 12, (0, 150, 0), 4)
+        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 15, int(node_coord[1]) - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 150, 0), 3)
 
 # 荷重を描画（矢じり先端と梁上の点を接続）
 for l in load_connections:
@@ -1912,17 +1912,17 @@ for l in load_connections:
         # 複数の矢印位置に円を描画
         for pos in l["udl_arrow_positions"]:
             pos_array = np.array(pos)
-            cv2.circle(cleaned, tuple(map(int, pos_array)), 5, (0, 0, 255), -1)
+            cv2.circle(cleaned, tuple(map(int, pos_array)), 8, (0, 0, 200), -1)
     elif not l.get("is_udl", False):
         # 集中荷重の場合、矢じり先端と梁上の点を線で接続
-        # 接続線を描画（緑色の細線）
-        cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 200, 0), 3)
+        # 接続線を描画（濃い緑色の太線）
+        cv2.line(cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 150, 0), 6)
         
-        # 矢じり先端に小さな円を描画（荷重の作用点）
-        cv2.circle(cleaned, tuple(map(int, tip)), 5, (0, 0, 255), -1)
+        # 矢じり先端に大きな円を描画（荷重の作用点）
+        cv2.circle(cleaned, tuple(map(int, tip)), 8, (0, 0, 200), -1)
         
         # 梁上の接続点に円を描画
-        cv2.circle(cleaned, tuple(map(int, proj)), 6, (255, 0, 0), 2)
+        cv2.circle(cleaned, tuple(map(int, proj)), 10, (200, 0, 0), 4)
     
     # 荷重テンプレートを配置
     if tpl is not None and "bbox_pts" in l:
