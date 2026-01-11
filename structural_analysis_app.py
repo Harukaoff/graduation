@@ -609,8 +609,8 @@ for i, s in enumerate(supports):
     all_nodes.append(s["node"])
     node_info.append({"type": "support", "support_idx": i, "support_type": s["type"]})
 
-# ===== 重複梁の削除 =====
-# バウンディングボックスが大きく重なっている梁を削除
+# ===== 重複梁の統合処理 =====
+# バウンディングボックスが大きく重なっている梁を一直線に統合
 def calculate_bbox_overlap(pts1, pts2):
     """2つのバウンディングボックスの重なり度合いを計算（0-1）"""
     # 各ボックスの範囲を計算
@@ -633,34 +633,108 @@ def calculate_bbox_overlap(pts1, pts2):
         return overlap_area / min(area1, area2)
     return 0
 
-beams_to_remove_duplicate = []
-overlap_threshold = 0.3  # 30%以上重なっていたら重複とみなす
-
-for i in range(len(beams)):
-    if i in beams_to_remove_duplicate:
-        continue
+def merge_overlapping_beams(beams, overlap_threshold=0.3):
+    """重複している梁を一直線に統合"""
+    merged_beams = []
+    used_indices = set()
     
-    for j in range(i + 1, len(beams)):
-        if j in beams_to_remove_duplicate:
+    for i in range(len(beams)):
+        if i in used_indices:
             continue
         
-        # 重なり度合いを計算
-        overlap = calculate_bbox_overlap(beams[i]["pts"], beams[j]["pts"])
+        # 現在の梁と重複する梁を探す
+        overlapping_group = [i]
+        for j in range(i + 1, len(beams)):
+            if j in used_indices:
+                continue
+            
+            overlap = calculate_bbox_overlap(beams[i]["pts"], beams[j]["pts"])
+            if overlap > overlap_threshold:
+                overlapping_group.append(j)
         
-        if overlap > overlap_threshold:
-            # 信頼度の低い方を削除
-            if beams[i]["conf"] < beams[j]["conf"]:
-                beams_to_remove_duplicate.append(i)
-                st.info(f"🗑️ 梁{i}を削除（梁{j}と{overlap*100:.1f}%重複、信頼度: {beams[i]['conf']:.2f} < {beams[j]['conf']:.2f}）")
-                break
-            else:
-                beams_to_remove_duplicate.append(j)
-                st.info(f"🗑️ 梁{j}を削除（梁{i}と{overlap*100:.1f}%重複、信頼度: {beams[j]['conf']:.2f} < {beams[i]['conf']:.2f}）")
+        if len(overlapping_group) == 1:
+            # 重複なし：そのまま追加
+            merged_beams.append(beams[i])
+        else:
+            # 重複あり：統合処理
+            group_beams = [beams[idx] for idx in overlapping_group]
+            merged_beam = create_unified_beam(group_beams)
+            merged_beams.append(merged_beam)
+            st.info(f"🔗 {len(overlapping_group)}本の重複梁を一直線に統合")
+        
+        # 使用済みとしてマーク
+        for idx in overlapping_group:
+            used_indices.add(idx)
+    
+    return merged_beams
 
-# 重複梁を削除
-if beams_to_remove_duplicate:
-    beams = [b for i, b in enumerate(beams) if i not in beams_to_remove_duplicate]
-    st.info(f"ℹ️ {len(beams_to_remove_duplicate)}本の重複梁を削除しました")
+def create_unified_beam(beam_group):
+    """重複する梁群から統合された一直線の梁を作成"""
+    # 全ての端点を収集
+    all_points = []
+    total_conf = 0
+    
+    for beam in beam_group:
+        pts = beam["pts"]
+        # 梁の端点（最も離れた2点）を取得
+        pt1, pt2 = get_beam_endpoints(pts)
+        all_points.extend([pt1, pt2])
+        total_conf += beam["conf"]
+    
+    # 最も離れた2点を見つけて一直線の梁を作成
+    max_dist = 0
+    best_pt1, best_pt2 = all_points[0], all_points[1]
+    
+    for i, pt1 in enumerate(all_points):
+        for j, pt2 in enumerate(all_points):
+            if i >= j:
+                continue
+            dist = np.linalg.norm(pt2 - pt1)
+            if dist > max_dist:
+                max_dist = dist
+                best_pt1, best_pt2 = pt1, pt2
+    
+    # 統合された梁の角度を計算
+    vector = best_pt2 - best_pt1
+    angle = math.degrees(math.atan2(vector[1], vector[0]))
+    if angle < 0:
+        angle += 360
+    
+    # 15度刻みに補正
+    corrected_angle = round(angle / 15) * 15
+    
+    # 補正後の端点を計算
+    length = np.linalg.norm(vector)
+    angle_rad = math.radians(corrected_angle)
+    corrected_pt2 = best_pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+    
+    # 統合された梁のバウンディングボックスを作成（一直線）
+    # 線の太さを考慮して矩形を作成
+    line_thickness = 20  # 線の太さ（ピクセル）
+    
+    # 垂直ベクトルを計算
+    perp_vector = np.array([-math.sin(angle_rad), math.cos(angle_rad)]) * line_thickness / 2
+    
+    # 4つの角点を計算
+    unified_pts = np.array([
+        best_pt1 + perp_vector,
+        best_pt1 - perp_vector,
+        corrected_pt2 - perp_vector,
+        corrected_pt2 + perp_vector
+    ])
+    
+    # 統合された梁を返す
+    return {
+        "type": "beam",
+        "pts": unified_pts,
+        "angle": corrected_angle,
+        "conf": total_conf / len(beam_group),  # 平均信頼度
+        "is_merged": True,
+        "merged_count": len(beam_group)
+    }
+
+# 重複梁を統合
+beams = merge_overlapping_beams(beams, overlap_threshold=0.3)
 
 # 梁の端点を追加（まだスナップしていない状態）
 beam_endpoints = []
