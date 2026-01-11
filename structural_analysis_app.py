@@ -409,7 +409,7 @@ def preprocess_image(img, contrast_factor=1.0, edge_enhancement=False, noise_red
     
     return processed_img
 
-uploaded = st.file_uploader("📷 構造図画像をアップロード", type=["png", "jpg", "jpeg"])
+uploaded = st.file_uploader("📷 手書き図をアップロード", type=["png", "jpg", "jpeg"])
 
 if uploaded is None:
     st.info("画像ファイルをアップロードしてください")
@@ -1121,6 +1121,89 @@ for i in range(len(beam_connections)):
 if beams_to_remove_cross:
     beam_connections = [beam for i, beam in enumerate(beam_connections) if i not in beams_to_remove_cross]
     st.info(f"ℹ️ 梁が交差していたため、{len(beams_to_remove_cross)}本の梁を削除しました")
+
+# ===== 支点から未接続梁端点への自動梁追加 =====
+# 支点から近い未接続の梁端点を探して自動的に梁を追加
+def find_unconnected_beam_endpoints(beam_connections, all_nodes, node_info):
+    """未接続の梁端点を探す"""
+    connected_nodes = set()
+    
+    # 既に接続されている節点を収集
+    for conn in beam_connections:
+        connected_nodes.add(conn["node1_idx"])
+        connected_nodes.add(conn["node2_idx"])
+    
+    # 支点節点のインデックスを取得
+    support_nodes = []
+    for i, info in enumerate(node_info):
+        if info.get("type") == "support":
+            support_nodes.append(i)
+    
+    # 未接続の節点を探す（支点以外で接続されていない節点）
+    unconnected_nodes = []
+    for i, info in enumerate(node_info):
+        if i not in connected_nodes and info.get("type") != "support":
+            unconnected_nodes.append(i)
+    
+    return support_nodes, unconnected_nodes
+
+def add_missing_beams(beam_connections, all_nodes, node_info, max_distance=200):
+    """支点から未接続節点への梁を自動追加"""
+    support_nodes, unconnected_nodes = find_unconnected_beam_endpoints(beam_connections, all_nodes, node_info)
+    
+    added_beams = []
+    
+    for support_idx in support_nodes:
+        support_coord = np.array(all_nodes[support_idx])
+        
+        # この支点に最も近い未接続節点を探す
+        min_dist = float('inf')
+        closest_unconnected = -1
+        
+        for unconnected_idx in unconnected_nodes:
+            unconnected_coord = np.array(all_nodes[unconnected_idx])
+            dist = np.linalg.norm(support_coord - unconnected_coord)
+            
+            if dist < min_dist and dist < max_distance:
+                min_dist = dist
+                closest_unconnected = unconnected_idx
+        
+        # 閾値内に未接続節点がある場合、梁を追加
+        if closest_unconnected >= 0:
+            unconnected_coord = np.array(all_nodes[closest_unconnected])
+            
+            # 角度を計算
+            vector = unconnected_coord - support_coord
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            
+            # 新しい梁を追加
+            new_beam = {
+                "beam_idx": len(beams) + len(added_beams),  # 新しいインデックス
+                "node1_idx": support_idx,
+                "node2_idx": closest_unconnected,
+                "node1_coord": support_coord.tolist(),
+                "node2_coord": unconnected_coord.tolist(),
+                "angle": corrected_angle,
+                "original_angle": angle,
+                "conf": 0.5,  # 自動追加梁の信頼度
+                "snap1_dist": 0.0,
+                "snap2_dist": 0.0,
+                "is_auto_added": True
+            }
+            
+            added_beams.append(new_beam)
+            unconnected_nodes.remove(closest_unconnected)  # 接続済みとしてマーク
+            
+            st.info(f"🔗 自動梁追加: 支点N{support_idx} → 節点N{closest_unconnected} (距離: {min_dist:.1f}px)")
+    
+    return added_beams
+
+# 自動梁追加を実行
+auto_added_beams = add_missing_beams(beam_connections, all_nodes, node_info)
+if auto_added_beams:
+    beam_connections.extend(auto_added_beams)
+    st.success(f"✅ {len(auto_added_beams)}本の梁を自動追加しました")
 
 # ===== 荷重の接続処理 =====
 # 集中荷重・モーメント荷重の矢じり先端を梁上の節点に接続し、梁を分割
