@@ -2587,16 +2587,6 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
             adjusted_fig_list.append(df_adjusted)
     
     return adjusted_fig_list
-            df_adjusted = combined_df.copy()
-            
-            # 部材上の各点を補正済み部材上の対応点に変換
-            for j in range(len(df_adjusted)):
-                # 元の部材上での位置比率を計算
-                orig_point = np.array([combined_df.iloc[j]['x'], combined_df.iloc[j]['y']])
-                
-                # 元の部材の方向ベクトル
-                orig_vector = pt2_orig - pt1_orig
-                orig_length = np.linalg.norm(orig_vector)
                 
                 if orig_length > 0:
                     # 元の部材上での位置比率
