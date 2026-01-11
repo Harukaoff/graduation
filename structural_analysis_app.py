@@ -350,21 +350,6 @@ with st.sidebar:
         conf_th = st.slider("🎯 検出信頼度", 0.1, 0.9, 0.5, 0.05, 
                            help="値が高いほど確実な検出のみを採用します")
     
-    # 画像前処理オプション
-    st.subheader("🖼️ 画像前処理")
-    
-    enable_preprocessing = st.checkbox("画像前処理を有効にする", help="コントラスト調整や輪郭強調で検出精度を向上")
-    
-    if enable_preprocessing:
-        # コントラスト調整
-        contrast_factor = st.slider("コントラスト調整", 0.5, 2.0, 1.0, 0.1)
-        
-        # 輪郭強調
-        edge_enhancement = st.checkbox("輪郭強調", value=False)
-        
-        # ノイズ除去
-        noise_reduction = st.checkbox("ノイズ除去", value=False)
-    
     st.markdown("---")
     
     # 固定値設定
@@ -418,23 +403,19 @@ if uploaded is None:
 img_pil = Image.open(uploaded).convert("RGB")
 img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
-# 画像前処理を適用
-if enable_preprocessing:
-    img = preprocess_image(
-        img, 
-        contrast_factor=contrast_factor,
-        edge_enhancement=edge_enhancement,
-        noise_reduction=noise_reduction
-    )
-    # 前処理後の画像をPIL形式にも変換
-    img_pil_processed = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-else:
-    img_pil_processed = img_pil
+# 画像前処理を常に適用（ノイズ除去を有効）
+img = preprocess_image(
+    img, 
+    contrast_factor=1.0,
+    edge_enhancement=False,
+    noise_reduction=True  # ノイズ除去を常にオン
+)
+# 前処理後の画像をPIL形式にも変換
+img_pil_processed = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
 col1, col2 = st.columns(2)
 with col1:
-    caption = "前処理後画像" if enable_preprocessing else "元画像"
-    st.image(img_pil_processed, caption=caption, use_container_width=True)
+    st.image(img_pil_processed, caption="前処理後画像", use_container_width=True)
 
 TEMPL = {k: load_template_rgba(template_path(k)) for k in TEMPLATE_FILES}
 
@@ -2302,10 +2283,7 @@ with st.expander("🔍 検出詳細情報"):
     st.write(f"- 画像解析サイズ: {img_size}px")
     st.write(f"- IoU閾値: {iou_threshold:.2f}")
     st.write(f"- 最大検出数: {max_det}")
-    if enable_preprocessing:
-        st.write(f"- 前処理: コントラスト{contrast_factor:.1f}x" + 
-                (", 輪郭強調" if edge_enhancement else "") +
-                (", ノイズ除去" if noise_reduction else ""))
+    st.write(f"- 前処理: ノイズ除去適用")
     st.write(f"- 画像サイズ: {img_width}x{img_height}px")
     
     st.write(f"\n**検出された要素**")
