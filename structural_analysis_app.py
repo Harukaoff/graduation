@@ -301,7 +301,7 @@ with col_logo:
 with col_title:
     st.title("InstaStruct")
     st.write("構造力学解析アプリ")
-    st.caption("手書き構造図から自動で構造解析を行い、変形図と応力図を出力します")
+    st.caption("手書き図から自動で構造解析を行い、変形図と応力図を出力します")
 
 # サイドバー設定
 with st.sidebar:
