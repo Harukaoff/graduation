@@ -78,15 +78,30 @@ def order_cw_start_top_left(pts):
     return pts_final
 
 def load_template_rgba(path):
-    if not path or not os.path.exists(path): return None
+    if not path or not os.path.exists(path): 
+        print(f"Template path does not exist: {path}")
+        return None
+    
+    # JPGとPNGの両方に対応
     img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-    if img is None: return None
+    if img is None: 
+        print(f"Failed to load image: {path}")
+        return None
+    
+    print(f"Loaded image shape: {img.shape}, path: {path}")
+    
     if len(img.shape) == 2:
+        # グレースケール画像の場合
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
     elif img.shape[2] == 3:
+        # RGB画像の場合（JPGファイル）
         b, g, r = cv2.split(img)
-        a = np.ones_like(b) * 255
+        a = np.ones_like(b) * 255  # 完全不透明のアルファチャンネルを追加
         img = cv2.merge([b, g, r, a])
+    elif img.shape[2] == 4:
+        # 既にRGBA画像の場合（PNGファイル）
+        pass
+    
     return img
 
 def scale_image(img, scale):
@@ -437,6 +452,19 @@ with col1:
     st.image(img_pil_processed, caption=caption, use_container_width=True)
 
 TEMPL = {k: load_template_rgba(template_path(k)) for k in TEMPLATE_FILES}
+
+# テンプレート読み込み状況をデバッグ
+for k, v in TEMPL.items():
+    if v is not None:
+        st.write(f"✅ テンプレート '{k}' 読み込み成功: {template_path(k)}")
+    else:
+        st.error(f"❌ テンプレート '{k}' 読み込み失敗: {template_path(k)}")
+        # ファイルの存在確認
+        path = template_path(k)
+        if path and os.path.exists(path):
+            st.write(f"  ファイルは存在します: {path}")
+        else:
+            st.write(f"  ファイルが存在しません: {path}")
 
 if not MODEL_PATH or not os.path.exists(MODEL_PATH):
     st.error(f"モデルパスが存在しません: {MODEL_PATH}")
