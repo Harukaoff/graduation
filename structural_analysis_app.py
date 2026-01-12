@@ -626,7 +626,7 @@ def merge_overlapping_beams(beams, overlap_threshold=0.3):
             group_beams = [beams[idx] for idx in overlapping_group]
             merged_beam = create_unified_beam(group_beams)
             merged_beams.append(merged_beam)
-            st.info(f"🔗 {len(overlapping_group)}本の重複梁を一直線に統合")
+            # 統合メッセージを削除
         
         # 使用済みとしてマーク
         for idx in overlapping_group:
@@ -2510,7 +2510,7 @@ try:
     with st.spinner("FEM解析実行中..."):
         D_R, M_S = fem_lib.fem_calc(elements_df, nodes_df)
     
-    st.success("✅ FEM解析完了")
+    # FEM解析完了メッセージを削除
     
     # 結果表示
     st.subheader("📊 解析結果")
