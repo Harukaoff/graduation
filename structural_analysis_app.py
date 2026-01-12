@@ -2381,51 +2381,6 @@ with st.expander("🔍 検出詳細情報"):
         node_coord = node if isinstance(node, np.ndarray) else np.array(node)
         st.write(f"N{i}: ({node_coord[0]:.1f}, {node_coord[1]:.1f}) - {info['type']}")
 
-st.subheader("📋 解析データ")
-
-# 構造の妥当性チェック
-if len(elements_df) == 0:
-    st.error("❌ 部材が検出されませんでした。梁が正しく認識されているか確認してください。")
-    st.stop()
-
-if len(nodes_df) == 0:
-    st.error("❌ 節点が検出されませんでした。")
-    st.stop()
-
-# 拘束条件のチェック
-constraint_count = nodes_df[['rc_x', 'rc_y', 'rc_m']].sum().sum()
-if constraint_count < 3:
-    st.warning("⚠️ 拘束条件が不足している可能性があります（最低3つの拘束が必要）")
-
-tab1, tab2, tab3 = st.tabs(["節点情報", "部材情報", "荷重・拘束条件"])
-
-with tab1:
-    st.write(f"**節点数: {len(nodes_df)}**")
-    display_nodes = nodes_df.copy()
-    display_nodes.index.name = '節点番号'
-    st.dataframe(display_nodes[['x', 'y']], use_container_width=True)
-
-with tab2:
-    st.write(f"**部材数: {len(elements_df)}**")
-    st.dataframe(elements_df[['start', 'end', 'length', 'angle', 'young', 'area', 's_moment']], use_container_width=True)
-
-with tab3:
-    constraint_df = nodes_df[nodes_df[['rc_x', 'rc_y', 'rc_m']].sum(axis=1) > 0]
-    load_df = nodes_df[nodes_df[['ef_x', 'ef_y', 'ef_m']].abs().sum(axis=1) > 0]
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.write(f"**拘束条件 ({len(constraint_df)}節点)**")
-        if len(constraint_df) > 0:
-            st.dataframe(constraint_df[['x', 'y', 'rc_x', 'rc_y', 'rc_m']], use_container_width=True)
-        else:
-            st.warning("拘束条件が設定されていません")
-    with col_b:
-        st.write(f"**荷重条件 ({len(load_df)}節点)**")
-        if len(load_df) > 0:
-            st.dataframe(load_df[['x', 'y', 'ef_x', 'ef_y', 'ef_m']], use_container_width=True)
-        else:
-            st.info("荷重が設定されていません")
-
 def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
     """応力図データを15度補正済みの部材に合わせて調整（統合梁も含めて一直線で表示）"""
     adjusted_fig_list = []
@@ -2828,3 +2783,48 @@ try:
 except Exception as e:
     st.error(f"❌ 解析エラー: {str(e)}")
     st.exception(e)
+
+# 構造の妥当性チェック
+if len(elements_df) == 0:
+    st.error("❌ 部材が検出されませんでした。梁が正しく認識されているか確認してください。")
+    st.stop()
+
+if len(nodes_df) == 0:
+    st.error("❌ 節点が検出されませんでした。")
+    st.stop()
+
+# 拘束条件のチェック
+constraint_count = nodes_df[['rc_x', 'rc_y', 'rc_m']].sum().sum()
+if constraint_count < 3:
+    st.warning("⚠️ 拘束条件が不足している可能性があります（最低3つの拘束が必要）")
+
+st.subheader("📋 解析データ")
+
+tab1, tab2, tab3 = st.tabs(["節点情報", "部材情報", "荷重・拘束条件"])
+
+with tab1:
+    st.write(f"**節点数: {len(nodes_df)}**")
+    display_nodes = nodes_df.copy()
+    display_nodes.index.name = '節点番号'
+    st.dataframe(display_nodes[['x', 'y']], use_container_width=True)
+
+with tab2:
+    st.write(f"**部材数: {len(elements_df)}**")
+    st.dataframe(elements_df[['start', 'end', 'length', 'angle', 'young', 'area', 's_moment']], use_container_width=True)
+
+with tab3:
+    constraint_df = nodes_df[nodes_df[['rc_x', 'rc_y', 'rc_m']].sum(axis=1) > 0]
+    load_df = nodes_df[nodes_df[['ef_x', 'ef_y', 'ef_m']].abs().sum(axis=1) > 0]
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write(f"**拘束条件 ({len(constraint_df)}節点)**")
+        if len(constraint_df) > 0:
+            st.dataframe(constraint_df[['x', 'y', 'rc_x', 'rc_y', 'rc_m']], use_container_width=True)
+        else:
+            st.warning("拘束条件が設定されていません")
+    with col_b:
+        st.write(f"**荷重条件 ({len(load_df)}節点)**")
+        if len(load_df) > 0:
+            st.dataframe(load_df[['x', 'y', 'ef_x', 'ef_y', 'ef_m']], use_container_width=True)
+        else:
+            st.info("荷重が設定されていません")
