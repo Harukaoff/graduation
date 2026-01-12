@@ -1970,10 +1970,10 @@ for l in load_connections:
             
             if is_horizontal:
                 # 横長の場合：梁に垂直に表示（従来通り）
-                template_rotation = angle + 90
+                template_rotation = angle - 90  # 180度回転を修正
             else:
                 # 縦長の場合：さらに90度回転
-                template_rotation = angle + 180
+                template_rotation = angle  # 180度回転を修正
             
             tpl_rot = rotate_image_keep_alpha(tpl_scaled, template_rotation)
             
