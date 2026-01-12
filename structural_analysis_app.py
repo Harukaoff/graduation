@@ -322,7 +322,7 @@ with st.sidebar:
     auto_conf = st.checkbox("🤖 自動信頼度調整", value=True, help="解析可能な構造が検出されるまで信頼度を自動調整します")
     
     if auto_conf:
-        st.info("📊 自動調整モード: 解析可能な構造が検出されるまで信頼度を0.8から0.2まで自動調整します")
+        st.info("📊 自動調整モード: 解析可能な構造が検出されるまで信頼度を0.8から0.1まで自動調整します")
         conf_th = 0.8  # 初期値（自動調整で変更される）
     else:
         conf_th = st.slider("🎯 検出信頼度", 0.1, 0.9, 0.5, 0.05, 
@@ -417,7 +417,7 @@ with st.spinner("画像認識中..."):
     # 自動信頼度調整
     if auto_conf:
         # 自動調整モード：解析可能な構造が見つかるまで信頼度を下げていく
-        conf_candidates = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+        conf_candidates = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
         best_conf = None
         best_result = None
         
@@ -467,7 +467,7 @@ with st.spinner("画像認識中..."):
             res = best_result
             # 自動調整結果メッセージを削除
         else:
-            conf_th = 0.2
+            conf_th = 0.1
             res = model(img, conf=conf_th, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
     else:
         # 手動モード（改良された設定を使用）
