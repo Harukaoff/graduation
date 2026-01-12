@@ -339,18 +339,6 @@ with st.sidebar:
     udl_value = 5.0
     
     st.markdown("---")
-    st.subheader("📋 固定設定値")
-    st.markdown(f"""
-    **材料特性**
-    - ヤング係数 E: `{young:.1e}`
-    - 断面積 A: `{area:.1e}`
-    - 断面二次モーメント I: `{s_moment:.1e}`
-    
-    **荷重設定**
-    - 集中荷重: `{load_value:.1f}`
-    - モーメント荷重: `{moment_value:.1f}`
-    - 等分布荷重: `{udl_value:.1f}`
-    """)
 
 def preprocess_image(img, contrast_factor=1.0, edge_enhancement=False, noise_reduction=False):
     """画像前処理を実行"""
