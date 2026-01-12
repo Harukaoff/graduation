@@ -311,32 +311,10 @@ with st.sidebar:
         st.image(logo_path, use_container_width=True)
     st.markdown("---")
     
-    st.header("⚙️ 解析設定")
-    
-    # 検出精度向上のための設定
-    st.subheader("🔍 検出精度設定")
-    
-    # 画像サイズ設定
-    img_size = st.selectbox(
-        "画像解析サイズ",
-        [640, 800, 1024, 1280],
-        index=0,
-        help="大きいサイズほど小さな要素も検出しやすくなりますが、処理時間が長くなります"
-    )
-    
-    # 検出後処理設定
-    iou_threshold = st.slider(
-        "重複除去閾値 (IoU)",
-        0.1, 0.9, 0.45, 0.05,
-        help="重複検出の除去基準。低いほど重複を厳しく除去します"
-    )
-    
-    # 最大検出数
-    max_det = st.slider(
-        "最大検出数",
-        100, 1000, 300, 50,
-        help="1枚の画像で検出する要素の最大数"
-    )
+    # デフォルト値を設定
+    img_size = 640  # デフォルト画像解析サイズ
+    iou_threshold = 0.45  # デフォルトIoU閾値
+    max_det = 300  # デフォルト最大検出数
     
     st.markdown("---")
     
@@ -491,7 +469,7 @@ with st.spinner("画像認識中..."):
             if is_valid_structure(test_supports, test_beams, test_loads):
                 best_conf = test_conf
                 best_result = test_res
-                status_text.success(f"✅ 信頼度 {test_conf:.1f} で解析可能な構造を検出しました！")
+                # 成功メッセージを削除
                 break
         
         progress_bar.empty()
@@ -499,7 +477,7 @@ with st.spinner("画像認識中..."):
         if best_conf is not None:
             conf_th = best_conf
             res = best_result
-            st.info(f"🎯 自動調整結果: 信頼度 {conf_th:.1f} を使用")
+            # 自動調整結果メッセージを削除
         else:
             conf_th = 0.2
             res = model(img, conf=conf_th, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
@@ -1014,8 +992,7 @@ for cluster_info in endpoint_clusters:
             
             # 移動距離を計算
             move_distance = np.linalg.norm(adjusted_support_coord - support_original_coord)
-            if move_distance > 5.0:  # 5px以上移動した場合のみ表示
-                st.info(f"🔧 支点N{connected_support}を梁端点に調整 (移動距離: {move_distance:.1f}px)")
+            # 支点調整メッセージを削除
         
         node_coord = all_nodes[connected_support]
     else:
@@ -2173,7 +2150,7 @@ for l in load_connections:
 with col2:
     st.image(cv2.cvtColor(cleaned, cv2.COLOR_BGR2RGB), "清書画像", use_container_width=True)
 
-st.success("✅ 画像認識・清書完了")
+# 成功メッセージを削除
 
 # ===== FEM解析用データ構造への変換 =====
 with st.spinner("FEM解析データ準備中..."):
@@ -2368,9 +2345,6 @@ with st.expander("🔍 検出詳細情報"):
     st.write(f"**使用された設定**")
     mode_text = "自動調整" if auto_conf else "手動設定"
     st.write(f"- 検出信頼度: {conf_th:.2f} ({mode_text})")
-    st.write(f"- 画像解析サイズ: {img_size}px")
-    st.write(f"- IoU閾値: {iou_threshold:.2f}")
-    st.write(f"- 最大検出数: {max_det}")
     st.write(f"- 前処理: ノイズ除去適用")
     st.write(f"- 画像サイズ: {img_width}x{img_height}px")
     
