@@ -1318,12 +1318,12 @@ for l in loads:
             # 荷重の向きを梁との位置関係とボックスの位置で決定
             beam_center = (beam_a + beam_b) / 2
             if box_center[1] < beam_center[1]:  # ボックスが梁より上
-                # 下向き荷重（梁に向かって）
-                angle = perp_angle
-                load_direction = np.array([np.cos(np.deg2rad(perp_angle)), np.sin(np.deg2rad(perp_angle))])
-            else:  # ボックスが梁より下
-                # 上向き荷重（梁に向かって）
+                # 下向き荷重（梁に向かって）- 180度回転を修正
                 angle = (perp_angle + 180) % 360
+                load_direction = np.array([np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))])
+            else:  # ボックスが梁より下
+                # 上向き荷重（梁に向かって）- 180度回転を修正
+                angle = perp_angle
                 load_direction = np.array([np.cos(np.deg2rad(angle)), np.sin(np.deg2rad(angle))])
             
             # 角度を15度刻みに丸める
