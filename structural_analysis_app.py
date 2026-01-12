@@ -2515,10 +2515,6 @@ try:
     # 結果表示
     st.subheader("📊 解析結果")
     
-    # 変位・反力の表示
-    st.write("**節点変位・反力**")
-    st.dataframe(D_R, use_container_width=True)
-    
     # 変形図の表示
     st.write("**変形図**")
     
@@ -2779,6 +2775,10 @@ try:
     ax.spines['left'].set_visible(False)
     ax.invert_yaxis()
     st.pyplot(fig)
+    
+    # 変位・反力の表示
+    st.write("**節点変位・反力**")
+    st.dataframe(D_R, use_container_width=True)
 
 except Exception as e:
     st.error(f"❌ 解析エラー: {str(e)}")
