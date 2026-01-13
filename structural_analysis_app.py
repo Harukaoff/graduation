@@ -2140,6 +2140,134 @@ with col2:
 
 # 成功メッセージを削除
 
+# ===== 解析パターン選択機能 =====
+st.subheader("🔧 解析パターン選択")
+
+# 4つの解析パターンを生成
+def generate_analysis_patterns(base_loads, base_udl_on_beams):
+    """4つの異なる解析パターンを生成"""
+    patterns = []
+    
+    # パターン1: 基本パターン（元の荷重値）
+    pattern1 = {
+        "name": "パターン1: 基本荷重",
+        "description": "検出された荷重値をそのまま使用",
+        "loads": base_loads.copy(),
+        "udl_on_beams": base_udl_on_beams.copy(),
+        "load_multiplier": 1.0,
+        "udl_multiplier": 1.0
+    }
+    patterns.append(pattern1)
+    
+    # パターン2: 荷重1.5倍
+    pattern2 = {
+        "name": "パターン2: 荷重1.5倍",
+        "description": "全ての荷重を1.5倍に増加",
+        "loads": base_loads.copy(),
+        "udl_on_beams": base_udl_on_beams.copy(),
+        "load_multiplier": 1.5,
+        "udl_multiplier": 1.5
+    }
+    patterns.append(pattern2)
+    
+    # パターン3: 荷重0.5倍
+    pattern3 = {
+        "name": "パターン3: 荷重0.5倍",
+        "description": "全ての荷重を0.5倍に減少",
+        "loads": base_loads.copy(),
+        "udl_on_beams": base_udl_on_beams.copy(),
+        "load_multiplier": 0.5,
+        "udl_multiplier": 0.5
+    }
+    patterns.append(pattern3)
+    
+    # パターン4: 集中荷重のみ（分布荷重を除外）
+    pattern4 = {
+        "name": "パターン4: 集中荷重のみ",
+        "description": "分布荷重を除外し、集中荷重のみで解析",
+        "loads": base_loads.copy(),
+        "udl_on_beams": [],  # 分布荷重を除外
+        "load_multiplier": 1.0,
+        "udl_multiplier": 1.0
+    }
+    patterns.append(pattern4)
+    
+    return patterns
+
+# 解析パターンを生成
+analysis_patterns = generate_analysis_patterns(load_connections, udl_on_beams)
+
+# パターンの清書図を表示
+st.write("**各パターンの清書図:**")
+pattern_cols = st.columns(4)
+
+pattern_images = []
+for i, pattern in enumerate(analysis_patterns):
+    with pattern_cols[i]:
+        # パターン用の清書図を生成
+        pattern_cleaned = img.copy()
+        
+        # 支点を描画
+        for s in supports:
+            tpl = TEMPL.get(s["type"])
+            if tpl is not None:
+                tpl_scaled = scale_image(tpl, 0.8)
+                tpl_rot = rotate_image_keep_alpha(tpl_scaled, s["angle"])
+                pattern_cleaned = overlay_rgba(pattern_cleaned, tpl_rot, s["node"])
+        
+        # 梁を描画
+        for conn in beam_connections:
+            pt1 = np.array(conn["node1_coord"])
+            pt2 = np.array(conn["node2_coord"])
+            cv2.line(pattern_cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (100, 100, 100), 8)
+        
+        # パターンの荷重を描画
+        # 集中荷重
+        for l in pattern["loads"]:
+            if "proj_coord" in l and "tip_coord" in l:
+                proj = np.array(l["proj_coord"])
+                tip = np.array(l["tip_coord"])
+                
+                # 荷重値に応じて線の太さを調整
+                line_thickness = max(3, int(6 * pattern["load_multiplier"]))
+                cv2.line(pattern_cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 150, 0), line_thickness)
+                cv2.circle(pattern_cleaned, tuple(map(int, tip)), max(6, int(8 * pattern["load_multiplier"])), (0, 0, 200), -1)
+                cv2.circle(pattern_cleaned, tuple(map(int, proj)), max(8, int(10 * pattern["load_multiplier"])), (200, 0, 0), 4)
+        
+        # 分布荷重
+        for udl in pattern["udl_on_beams"]:
+            if "udl_arrow_positions" in udl:
+                for arrow_pos in udl["udl_arrow_positions"]:
+                    arrow_size = max(4, int(6 * pattern["udl_multiplier"]))
+                    cv2.circle(pattern_cleaned, tuple(map(int, arrow_pos)), arrow_size, (0, 100, 200), -1)
+        
+        # パターン画像を保存
+        pattern_images.append(pattern_cleaned)
+        
+        # 画像を表示
+        st.image(cv2.cvtColor(pattern_cleaned, cv2.COLOR_BGR2RGB), 
+                caption=f"{pattern['name']}", use_container_width=True)
+        st.caption(pattern['description'])
+
+# パターン選択
+selected_pattern_idx = st.selectbox(
+    "解析するパターンを選択してください:",
+    range(len(analysis_patterns)),
+    format_func=lambda x: analysis_patterns[x]["name"],
+    help="選択したパターンで構造解析を実行します"
+)
+
+selected_pattern = analysis_patterns[selected_pattern_idx]
+st.success(f"選択されたパターン: {selected_pattern['name']}")
+
+# 選択されたパターンの荷重データを使用
+load_connections = selected_pattern["loads"]
+udl_on_beams = selected_pattern["udl_on_beams"]
+
+# 選択されたパターンの荷重倍率を取得
+pattern_load_multiplier = selected_pattern["load_multiplier"]
+pattern_udl_multiplier = selected_pattern["udl_multiplier"]
+
 # ===== FEM解析用データ構造への変換 =====
 with st.spinner("FEM解析データ準備中..."):
     # ===== 孤立節点の削除 =====
@@ -2450,136 +2578,6 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
             
             adjusted_fig_list.append(df_adjusted)
     
-    return adjusted_fig_list
-
-# ===== 解析パターン選択機能 =====
-st.subheader("🔧 解析パターン選択")
-
-# 4つの解析パターンを生成
-def generate_analysis_patterns(base_loads, base_udl_on_beams):
-    """4つの異なる解析パターンを生成"""
-    patterns = []
-    
-    # パターン1: 基本パターン（元の荷重値）
-    pattern1 = {
-        "name": "パターン1: 基本荷重",
-        "description": "検出された荷重値をそのまま使用",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 1.0,
-        "udl_multiplier": 1.0
-    }
-    patterns.append(pattern1)
-    
-    # パターン2: 荷重1.5倍
-    pattern2 = {
-        "name": "パターン2: 荷重1.5倍",
-        "description": "全ての荷重を1.5倍に増加",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 1.5,
-        "udl_multiplier": 1.5
-    }
-    patterns.append(pattern2)
-    
-    # パターン3: 荷重0.5倍
-    pattern3 = {
-        "name": "パターン3: 荷重0.5倍",
-        "description": "全ての荷重を0.5倍に減少",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 0.5,
-        "udl_multiplier": 0.5
-    }
-    patterns.append(pattern3)
-    
-    # パターン4: 集中荷重のみ（分布荷重を除外）
-    pattern4 = {
-        "name": "パターン4: 集中荷重のみ",
-        "description": "分布荷重を除外し、集中荷重のみで解析",
-        "loads": base_loads.copy(),
-        "udl_on_beams": [],  # 分布荷重を除外
-        "load_multiplier": 1.0,
-        "udl_multiplier": 1.0
-    }
-    patterns.append(pattern4)
-    
-    return patterns
-
-# 解析パターンを生成
-analysis_patterns = generate_analysis_patterns(load_connections, udl_on_beams)
-
-# パターンの清書図を表示
-st.write("**各パターンの清書図:**")
-pattern_cols = st.columns(4)
-
-pattern_images = []
-for i, pattern in enumerate(analysis_patterns):
-    with pattern_cols[i]:
-        # パターン用の清書図を生成
-        pattern_cleaned = img.copy()
-        
-        # 支点を描画
-        for s in supports:
-            tpl = TEMPL.get(s["type"])
-            if tpl is not None:
-                tpl_scaled = scale_image(tpl, 0.8)
-                tpl_rot = rotate_image_keep_alpha(tpl_scaled, s["angle"])
-                pattern_cleaned = overlay_rgba(pattern_cleaned, tpl_rot, s["node"])
-        
-        # 梁を描画
-        for conn in beam_connections:
-            pt1 = np.array(conn["node1_coord"])
-            pt2 = np.array(conn["node2_coord"])
-            cv2.line(pattern_cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (100, 100, 100), 8)
-        
-        # パターンの荷重を描画
-        # 集中荷重
-        for l in pattern["loads"]:
-            if "proj_coord" in l and "tip_coord" in l:
-                proj = np.array(l["proj_coord"])
-                tip = np.array(l["tip_coord"])
-                
-                # 荷重値に応じて線の太さを調整
-                line_thickness = max(3, int(6 * pattern["load_multiplier"]))
-                cv2.line(pattern_cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 150, 0), line_thickness)
-                cv2.circle(pattern_cleaned, tuple(map(int, tip)), max(6, int(8 * pattern["load_multiplier"])), (0, 0, 200), -1)
-                cv2.circle(pattern_cleaned, tuple(map(int, proj)), max(8, int(10 * pattern["load_multiplier"])), (200, 0, 0), 4)
-        
-        # 分布荷重
-        for udl in pattern["udl_on_beams"]:
-            if "udl_arrow_positions" in udl:
-                for arrow_pos in udl["udl_arrow_positions"]:
-                    arrow_size = max(4, int(6 * pattern["udl_multiplier"]))
-                    cv2.circle(pattern_cleaned, tuple(map(int, arrow_pos)), arrow_size, (0, 100, 200), -1)
-        
-        # パターン画像を保存
-        pattern_images.append(pattern_cleaned)
-        
-        # 画像を表示
-        st.image(cv2.cvtColor(pattern_cleaned, cv2.COLOR_BGR2RGB), 
-                caption=f"{pattern['name']}", use_container_width=True)
-        st.caption(pattern['description'])
-
-# パターン選択
-selected_pattern_idx = st.selectbox(
-    "解析するパターンを選択してください:",
-    range(len(analysis_patterns)),
-    format_func=lambda x: analysis_patterns[x]["name"],
-    help="選択したパターンで構造解析を実行します"
-)
-
-selected_pattern = analysis_patterns[selected_pattern_idx]
-st.success(f"選択されたパターン: {selected_pattern['name']}")
-
-# 選択されたパターンの荷重データを使用
-load_connections = selected_pattern["loads"]
-udl_on_beams = selected_pattern["udl_on_beams"]
-
-# 選択されたパターンの荷重倍率を取得
-pattern_load_multiplier = selected_pattern["load_multiplier"]
-pattern_udl_multiplier = selected_pattern["udl_multiplier"]
-
 # FEM解析実行
 try:
     with st.spinner("FEM解析実行中..."):
