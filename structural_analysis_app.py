@@ -2231,14 +2231,14 @@ with st.spinner("FEM解析データ準備中..."):
                 # FEMライブラリは画像座標系（y下向き正）を使用しているため、そのまま適用
                 # 画像: 右=[1,0], 下=[0,1], 左=[-1,0], 上=[0,-1]
                 # FEM: 右=ef_x正, 下=ef_y正, 左=ef_x負, 上=ef_y負
-                nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value
-                nodes_df.loc[node_idx, 'ef_y'] += direction[1] * load_value  # そのまま適用
+                nodes_df.loc[node_idx, 'ef_x'] += direction[0] * load_value * pattern_load_multiplier
+                nodes_df.loc[node_idx, 'ef_y'] += direction[1] * load_value * pattern_load_multiplier  # そのまま適用
             elif l["type"] == "momentl":
                 # momentL = 反時計回り = 正（FEM規則に従う）
-                nodes_df.loc[node_idx, 'ef_m'] += -moment_value
+                nodes_df.loc[node_idx, 'ef_m'] += -moment_value * pattern_load_multiplier
             elif l["type"] == "momentr":
                 # momentR = 時計回り = 負（FEM規則に従う）
-                nodes_df.loc[node_idx, 'ef_m'] += moment_value
+                nodes_df.loc[node_idx, 'ef_m'] += moment_value * pattern_load_multiplier
     
     # elements_df作成
     elements_df = pd.DataFrame(columns=['young', 'area', 's_moment', 'length', 'angle', 'start', 'end', 'Ws', 'We'])
@@ -2293,7 +2293,7 @@ with st.spinner("FEM解析データ準備中..."):
     for udl in udl_on_beams:
         original_beam_idx = udl["beam_idx"]
         direction = np.array(udl["direction"])
-        load_val = udl["load_value"]
+        load_val = udl["load_value"] * pattern_udl_multiplier
         t_start = udl.get("split_t_start", 0)
         t_end = udl.get("split_t_end", 1)
         
@@ -2466,64 +2466,41 @@ def generate_analysis_patterns(base_loads, base_udl_on_beams):
         "description": "検出された荷重値をそのまま使用",
         "loads": base_loads.copy(),
         "udl_on_beams": base_udl_on_beams.copy(),
-        "multiplier": 1.0
+        "load_multiplier": 1.0,
+        "udl_multiplier": 1.0
     }
     patterns.append(pattern1)
     
     # パターン2: 荷重1.5倍
-    pattern2_loads = []
-    for load in base_loads:
-        new_load = load.copy()
-        new_load["load_value"] *= 1.5
-        pattern2_loads.append(new_load)
-    
-    pattern2_udl = []
-    for udl in base_udl_on_beams:
-        new_udl = udl.copy()
-        new_udl["load_value"] *= 1.5
-        pattern2_udl.append(new_udl)
-    
     pattern2 = {
         "name": "パターン2: 荷重1.5倍",
         "description": "全ての荷重を1.5倍に増加",
-        "loads": pattern2_loads,
-        "udl_on_beams": pattern2_udl,
-        "multiplier": 1.5
+        "loads": base_loads.copy(),
+        "udl_on_beams": base_udl_on_beams.copy(),
+        "load_multiplier": 1.5,
+        "udl_multiplier": 1.5
     }
     patterns.append(pattern2)
     
     # パターン3: 荷重0.5倍
-    pattern3_loads = []
-    for load in base_loads:
-        new_load = load.copy()
-        new_load["load_value"] *= 0.5
-        pattern3_loads.append(new_load)
-    
-    pattern3_udl = []
-    for udl in base_udl_on_beams:
-        new_udl = udl.copy()
-        new_udl["load_value"] *= 0.5
-        pattern3_udl.append(new_udl)
-    
     pattern3 = {
         "name": "パターン3: 荷重0.5倍",
         "description": "全ての荷重を0.5倍に減少",
-        "loads": pattern3_loads,
-        "udl_on_beams": pattern3_udl,
-        "multiplier": 0.5
+        "loads": base_loads.copy(),
+        "udl_on_beams": base_udl_on_beams.copy(),
+        "load_multiplier": 0.5,
+        "udl_multiplier": 0.5
     }
     patterns.append(pattern3)
     
     # パターン4: 集中荷重のみ（分布荷重を除外）
-    pattern4_loads = base_loads.copy()  # 集中荷重はそのまま
-    pattern4_udl = []  # 分布荷重を除外
-    
     pattern4 = {
         "name": "パターン4: 集中荷重のみ",
         "description": "分布荷重を除外し、集中荷重のみで解析",
-        "loads": pattern4_loads,
-        "udl_on_beams": pattern4_udl,
-        "multiplier": 1.0
+        "loads": base_loads.copy(),
+        "udl_on_beams": [],  # 分布荷重を除外
+        "load_multiplier": 1.0,
+        "udl_multiplier": 1.0
     }
     patterns.append(pattern4)
     
@@ -2564,16 +2541,16 @@ for i, pattern in enumerate(analysis_patterns):
                 tip = np.array(l["tip_coord"])
                 
                 # 荷重値に応じて線の太さを調整
-                line_thickness = max(3, int(6 * pattern["multiplier"]))
+                line_thickness = max(3, int(6 * pattern["load_multiplier"]))
                 cv2.line(pattern_cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 150, 0), line_thickness)
-                cv2.circle(pattern_cleaned, tuple(map(int, tip)), max(6, int(8 * pattern["multiplier"])), (0, 0, 200), -1)
-                cv2.circle(pattern_cleaned, tuple(map(int, proj)), max(8, int(10 * pattern["multiplier"])), (200, 0, 0), 4)
+                cv2.circle(pattern_cleaned, tuple(map(int, tip)), max(6, int(8 * pattern["load_multiplier"])), (0, 0, 200), -1)
+                cv2.circle(pattern_cleaned, tuple(map(int, proj)), max(8, int(10 * pattern["load_multiplier"])), (200, 0, 0), 4)
         
         # 分布荷重
         for udl in pattern["udl_on_beams"]:
             if "udl_arrow_positions" in udl:
                 for arrow_pos in udl["udl_arrow_positions"]:
-                    arrow_size = max(4, int(6 * pattern["multiplier"]))
+                    arrow_size = max(4, int(6 * pattern["udl_multiplier"]))
                     cv2.circle(pattern_cleaned, tuple(map(int, arrow_pos)), arrow_size, (0, 100, 200), -1)
         
         # パターン画像を保存
@@ -2598,6 +2575,10 @@ st.success(f"選択されたパターン: {selected_pattern['name']}")
 # 選択されたパターンの荷重データを使用
 load_connections = selected_pattern["loads"]
 udl_on_beams = selected_pattern["udl_on_beams"]
+
+# 選択されたパターンの荷重倍率を取得
+pattern_load_multiplier = selected_pattern["load_multiplier"]
+pattern_udl_multiplier = selected_pattern["udl_multiplier"]
 
 # FEM解析実行
 try:
@@ -2965,7 +2946,7 @@ with st.expander("🔍 検出詳細情報"):
         st.write(f"\n**等分布荷重が作用する梁**")
         for udl in udl_on_beams:
             beam_idx = udl["beam_idx"]
-            load_val = udl["load_value"]
+            load_val = udl["load_value"] * pattern_udl_multiplier
             direction = udl["direction"]
             t_start = udl.get("t_start", 0)
             t_end = udl.get("t_end", 1)
