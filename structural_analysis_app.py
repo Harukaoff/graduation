@@ -2578,6 +2578,7 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
             
             adjusted_fig_list.append(df_adjusted)
     
+    return adjusted_fig_list
 # FEM解析実行
 try:
     with st.spinner("FEM解析実行中..."):
