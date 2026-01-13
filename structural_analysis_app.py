@@ -2530,7 +2530,7 @@ def generate_analysis_patterns(base_loads, base_udl_on_beams):
     return patterns
 
 # 解析パターンを生成
-analysis_patterns = generate_analysis_patterns(loads_on_beams, udl_on_beams)
+analysis_patterns = generate_analysis_patterns(load_connections, udl_on_beams)
 
 # パターンの清書図を表示
 st.write("**各パターンの清書図:**")
@@ -2596,7 +2596,7 @@ selected_pattern = analysis_patterns[selected_pattern_idx]
 st.success(f"選択されたパターン: {selected_pattern['name']}")
 
 # 選択されたパターンの荷重データを使用
-loads_on_beams = selected_pattern["loads"]
+load_connections = selected_pattern["loads"]
 udl_on_beams = selected_pattern["udl_on_beams"]
 
 # FEM解析実行
