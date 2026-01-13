@@ -2252,7 +2252,7 @@ pattern_cols = st.columns(4)
 pattern_images = []
 for i, pattern in enumerate(analysis_patterns):
     with pattern_cols[i]:
-        # パターン用の清書図を生成
+        # パターン用の清書図を生成（元画像をベースに）
         pattern_cleaned = img.copy()
         
         # パターンの支点を描画
@@ -2271,8 +2271,18 @@ for i, pattern in enumerate(analysis_patterns):
         
         # パターンの荷重を描画
         for l in pattern["loads"]:
+            load_type = l["type"]
             center = l["pts"].mean(axis=0)
-            cv2.circle(pattern_cleaned, tuple(map(int, center)), 8, (0, 150, 0), -1)
+            
+            # 荷重テンプレートを描画
+            tpl = TEMPL.get(load_type)
+            if tpl is not None:
+                tpl_scaled = scale_image(tpl, 0.6)
+                tpl_rot = rotate_image_keep_alpha(tpl_scaled, l["angle"])
+                pattern_cleaned = overlay_rgba(pattern_cleaned, tpl_rot, center)
+            else:
+                # テンプレートがない場合は円で表示
+                cv2.circle(pattern_cleaned, tuple(map(int, center)), 8, (0, 150, 0), -1)
         
         # パターン画像を保存
         pattern_images.append(pattern_cleaned)
