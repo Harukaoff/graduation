@@ -2144,58 +2144,106 @@ with col2:
 st.subheader("🔧 解析パターン選択")
 
 # 4つの解析パターンを生成
-def generate_analysis_patterns(base_loads, base_udl_on_beams):
-    """4つの異なる解析パターンを生成"""
+def generate_analysis_patterns(img, model, img_size, iou_threshold, max_det):
+    """異なる信頼度で4つの検出パターンを生成"""
     patterns = []
     
-    # パターン1: 基本パターン（元の荷重値）
-    pattern1 = {
-        "name": "パターン1: 基本荷重",
-        "description": "検出された荷重値をそのまま使用",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 1.0,
-        "udl_multiplier": 1.0
-    }
-    patterns.append(pattern1)
+    # 異なる信頼度で検出を実行
+    confidence_levels = [0.8, 0.6, 0.4, 0.2]
     
-    # パターン2: 荷重1.5倍
-    pattern2 = {
-        "name": "パターン2: 荷重1.5倍",
-        "description": "全ての荷重を1.5倍に増加",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 1.5,
-        "udl_multiplier": 1.5
-    }
-    patterns.append(pattern2)
-    
-    # パターン3: 荷重0.5倍
-    pattern3 = {
-        "name": "パターン3: 荷重0.5倍",
-        "description": "全ての荷重を0.5倍に減少",
-        "loads": base_loads.copy(),
-        "udl_on_beams": base_udl_on_beams.copy(),
-        "load_multiplier": 0.5,
-        "udl_multiplier": 0.5
-    }
-    patterns.append(pattern3)
-    
-    # パターン4: 集中荷重のみ（分布荷重を除外）
-    pattern4 = {
-        "name": "パターン4: 集中荷重のみ",
-        "description": "分布荷重を除外し、集中荷重のみで解析",
-        "loads": base_loads.copy(),
-        "udl_on_beams": [],  # 分布荷重を除外
-        "load_multiplier": 1.0,
-        "udl_multiplier": 1.0
-    }
-    patterns.append(pattern4)
+    for i, conf_level in enumerate(confidence_levels):
+        # 各信頼度で画像認識を実行
+        pattern_res = model(img, conf=conf_level, imgsz=img_size, iou=iou_threshold, max_det=max_det)[0]
+        pattern_obb = pattern_res.obb
+        
+        # 検出された要素を分類
+        pattern_supports, pattern_beams, pattern_loads = [], [], []
+        pattern_N = len(to_numpy(pattern_obb.xyxyxyxy)) if hasattr(pattern_obb, "xyxyxyxy") else 0
+        
+        for j in range(pattern_N):
+            pattern_conf = float(to_numpy(pattern_obb.conf[j]))
+            if pattern_conf < conf_level: 
+                continue
+            pattern_cls_id = int(to_numpy(pattern_obb.cls[j]))
+            pattern_name = pattern_res.names[pattern_cls_id].lower().replace(" ", "")
+            pattern_pts = to_numpy(pattern_obb.xyxyxyxy[j]).reshape(4, 2)
+            pattern_pts = order_cw_start_top_left(pattern_pts)
+            
+            # 角度計算（既存のロジックと同じ）
+            if pattern_name in load_types:
+                # 荷重の角度計算
+                edge_lengths = []
+                for k in range(4):
+                    next_k = (k + 1) % 4
+                    length = np.linalg.norm(pattern_pts[next_k] - pattern_pts[k])
+                    edge_lengths.append((length, k, next_k))
+                
+                edge_lengths.sort()
+                short_edge1 = edge_lengths[0]
+                short_edge2 = edge_lengths[1]
+                
+                p1_1 = pattern_pts[short_edge1[1]]
+                p1_2 = pattern_pts[short_edge1[2]]
+                short_midpoint1 = (p1_1 + p1_2) / 2
+                
+                p2_1 = pattern_pts[short_edge2[1]]
+                p2_2 = pattern_pts[short_edge2[2]]
+                short_midpoint2 = (p2_1 + p2_2) / 2
+                
+                arrow_axis = short_midpoint2 - short_midpoint1
+                angle_raw = math.degrees(math.atan2(arrow_axis[1], arrow_axis[0]))
+                
+                if angle_raw < 0:
+                    angle_raw += 360
+                
+                angle = round_angle_deg(angle_raw)
+                angle_candidate1 = angle
+                angle_candidate2 = (angle + 180) % 360
+                
+                load_short_midpoints = (short_midpoint1, short_midpoint2)
+            elif pattern_name == "beam":
+                angle = round_angle_deg(math.degrees(math.atan2(pattern_pts[2][1] - pattern_pts[0][1], pattern_pts[2][0] - pattern_pts[0][0])))
+            else:
+                angle = round_angle_deg(math.degrees(math.atan2(pattern_pts[1][1] - pattern_pts[0][1], pattern_pts[1][0] - pattern_pts[0][0])))
+            
+            # 要素を分類
+            if pattern_name in support_types:
+                tpl = TEMPL.get(pattern_name)
+                node = None
+                if tpl is not None:
+                    node = template_absolute_top(pattern_pts.mean(axis=0), tpl, angle)
+                else:
+                    node = pattern_pts.mean(axis=0)
+                pattern_supports.append(dict(type=pattern_name, node=node, pts=pattern_pts, angle=angle, conf=pattern_conf))
+            elif pattern_name == "beam":
+                pattern_beams.append({"type": "beam", "pts": pattern_pts, "angle": round_angle_deg(angle), "conf": pattern_conf})
+            elif pattern_name in load_types:
+                load_data = {"type": pattern_name, "pts": pattern_pts, "angle": round_angle_deg(angle), "conf": pattern_conf}
+                if 'load_short_midpoints' in locals():
+                    load_data["short_midpoints"] = load_short_midpoints
+                if 'angle_candidate1' in locals() and 'angle_candidate2' in locals():
+                    load_data["angle_candidates"] = (angle_candidate1, angle_candidate2)
+                pattern_loads.append(load_data)
+        
+        # パターン情報を作成
+        pattern_info = {
+            "name": f"パターン{i+1}: 信頼度{conf_level}",
+            "description": f"信頼度{conf_level}で検出 (支点:{len(pattern_supports)}, 梁:{len(pattern_beams)}, 荷重:{len(pattern_loads)})",
+            "confidence": conf_level,
+            "supports": pattern_supports,
+            "beams": pattern_beams,
+            "loads": pattern_loads,
+            "support_count": len(pattern_supports),
+            "beam_count": len(pattern_beams),
+            "load_count": len(pattern_loads)
+        }
+        
+        patterns.append(pattern_info)
     
     return patterns
 
 # 解析パターンを生成
-analysis_patterns = generate_analysis_patterns(load_connections, udl_on_beams)
+analysis_patterns = generate_analysis_patterns(img, model, img_size, iou_threshold, max_det)
 
 # パターンの清書図を表示
 st.write("**各パターンの清書図:**")
@@ -2207,39 +2255,24 @@ for i, pattern in enumerate(analysis_patterns):
         # パターン用の清書図を生成
         pattern_cleaned = img.copy()
         
-        # 支点を描画
-        for s in supports:
+        # パターンの支点を描画
+        for s in pattern["supports"]:
             tpl = TEMPL.get(s["type"])
             if tpl is not None:
                 tpl_scaled = scale_image(tpl, 0.8)
                 tpl_rot = rotate_image_keep_alpha(tpl_scaled, s["angle"])
                 pattern_cleaned = overlay_rgba(pattern_cleaned, tpl_rot, s["node"])
         
-        # 梁を描画
-        for conn in beam_connections:
-            pt1 = np.array(conn["node1_coord"])
-            pt2 = np.array(conn["node2_coord"])
+        # パターンの梁を描画
+        for b in pattern["beams"]:
+            pts = b["pts"]
+            pt1, pt2 = get_beam_endpoints(pts)
             cv2.line(pattern_cleaned, tuple(map(int, pt1)), tuple(map(int, pt2)), (100, 100, 100), 8)
         
         # パターンの荷重を描画
-        # 集中荷重
         for l in pattern["loads"]:
-            if "proj_coord" in l and "tip_coord" in l:
-                proj = np.array(l["proj_coord"])
-                tip = np.array(l["tip_coord"])
-                
-                # 荷重値に応じて線の太さを調整
-                line_thickness = max(3, int(6 * pattern["load_multiplier"]))
-                cv2.line(pattern_cleaned, tuple(map(int, tip)), tuple(map(int, proj)), (0, 150, 0), line_thickness)
-                cv2.circle(pattern_cleaned, tuple(map(int, tip)), max(6, int(8 * pattern["load_multiplier"])), (0, 0, 200), -1)
-                cv2.circle(pattern_cleaned, tuple(map(int, proj)), max(8, int(10 * pattern["load_multiplier"])), (200, 0, 0), 4)
-        
-        # 分布荷重
-        for udl in pattern["udl_on_beams"]:
-            if "udl_arrow_positions" in udl:
-                for arrow_pos in udl["udl_arrow_positions"]:
-                    arrow_size = max(4, int(6 * pattern["udl_multiplier"]))
-                    cv2.circle(pattern_cleaned, tuple(map(int, arrow_pos)), arrow_size, (0, 100, 200), -1)
+            center = l["pts"].mean(axis=0)
+            cv2.circle(pattern_cleaned, tuple(map(int, center)), 8, (0, 150, 0), -1)
         
         # パターン画像を保存
         pattern_images.append(pattern_cleaned)
@@ -2260,13 +2293,169 @@ selected_pattern_idx = st.selectbox(
 selected_pattern = analysis_patterns[selected_pattern_idx]
 st.success(f"選択されたパターン: {selected_pattern['name']}")
 
-# 選択されたパターンの荷重データを使用
-load_connections = selected_pattern["loads"]
-udl_on_beams = selected_pattern["udl_on_beams"]
+# 選択されたパターンの検出データを使用
+supports = selected_pattern["supports"]
+beams = selected_pattern["beams"]
+loads = selected_pattern["loads"]
 
-# 選択されたパターンの荷重倍率を取得
-pattern_load_multiplier = selected_pattern["load_multiplier"]
-pattern_udl_multiplier = selected_pattern["udl_multiplier"]
+# 節点の再計算
+nodes = np.array([s["node"] for s in supports]) if supports else np.empty((0, 2))
+nodes = align_nodes_y(nodes, thresh=y_align_th) if len(nodes) >= 2 else nodes
+for i, s in enumerate(supports): 
+    if i < len(nodes):
+        s["node"] = nodes[i]
+
+# 荷重倍率は1.0に固定（荷重の大きさは変えない）
+pattern_load_multiplier = 1.0
+pattern_udl_multiplier = 1.0
+
+# 選択されたパターンで荷重接続処理を再実行
+# ===== 節点と梁の接続処理 =====
+# 1. すべての節点を収集（支点 + 梁端点）
+all_nodes = []
+node_info = []  # 節点の情報（タイプ、元のインデックスなど）
+
+# 支点の節点を追加
+for i, s in enumerate(supports):
+    all_nodes.append(s["node"])
+    node_info.append({"type": "support", "support_idx": i, "support_type": s["type"]})
+
+# 重複梁を統合
+beams = merge_overlapping_beams(beams, overlap_threshold=0.3)
+
+# 梁の端点を追加
+beam_endpoints = []
+for i, b in enumerate(beams):
+    pt1, pt2 = get_beam_endpoints(b['pts'])
+    beam_endpoints.append({
+        "beam_idx": i,
+        "pt1": pt1,
+        "pt2": pt2,
+        "angle": b["angle"],
+        "conf": b["conf"]
+    })
+
+# 梁端点接続処理（既存のロジックを使用）
+all_beam_endpoints = []
+for be in beam_endpoints:
+    all_beam_endpoints.append({
+        "point": be["pt1"],
+        "beam_idx": be["beam_idx"],
+        "is_pt1": True
+    })
+    all_beam_endpoints.append({
+        "point": be["pt2"],
+        "beam_idx": be["beam_idx"],
+        "is_pt1": False
+    })
+
+# 支点接続処理
+if len(beam_endpoints) == 1 and len(supports) == 2:
+    # 特殊ケース：梁1つ、支点2つ
+    support0 = all_nodes[0]
+    support1 = all_nodes[1]
+    
+    support_vector = support1 - support0
+    support_angle = math.degrees(math.atan2(support_vector[1], support_vector[0]))
+    if support_angle < 0:
+        support_angle += 360
+    
+    corrected_angle = round(support_angle / 15) * 15
+    support_distance = np.linalg.norm(support_vector)
+    
+    angle_rad = math.radians(corrected_angle)
+    beam_pt1 = support0
+    beam_pt2 = support0 + support_distance * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+    
+    beam_endpoints[0]["pt1"] = beam_pt1
+    beam_endpoints[0]["pt2"] = beam_pt2
+    beam_endpoints[0]["angle"] = corrected_angle
+    
+    dist_s0_p1 = np.linalg.norm(support0 - beam_pt1)
+    dist_s0_p2 = np.linalg.norm(support0 - beam_pt2)
+    dist_s1_p1 = np.linalg.norm(support1 - beam_pt1)
+    dist_s1_p2 = np.linalg.norm(support1 - beam_pt2)
+    
+    if dist_s0_p1 + dist_s1_p2 < dist_s0_p2 + dist_s1_p1:
+        support_to_beam_connections = [
+            {"support_idx": 0, "endpoint_idx": 0, "distance": dist_s0_p1},
+            {"support_idx": 1, "endpoint_idx": 1, "distance": dist_s1_p2}
+        ]
+    else:
+        support_to_beam_connections = [
+            {"support_idx": 0, "endpoint_idx": 1, "distance": dist_s0_p2},
+            {"support_idx": 1, "endpoint_idx": 0, "distance": dist_s1_p1}
+        ]
+else:
+    # 通常ケース
+    support_connect_th = node_connect_th * 12
+    support_to_beam_connections = []
+    for support_idx in range(len(supports)):
+        support_node = all_nodes[support_idx]
+        min_dist = float('inf')
+        closest_endpoint_idx = -1
+        
+        for ep_idx, ep in enumerate(all_beam_endpoints):
+            dist = np.linalg.norm(support_node - ep["point"])
+            if dist < min_dist:
+                min_dist = dist
+                closest_endpoint_idx = ep_idx
+        
+        if min_dist < support_connect_th and closest_endpoint_idx >= 0:
+            support_to_beam_connections.append({
+                "support_idx": support_idx,
+                "endpoint_idx": closest_endpoint_idx,
+                "distance": min_dist
+            })
+
+# 梁接続処理（既存のロジックを簡略化）
+beam_connections = []
+for i, be in enumerate(beam_endpoints):
+    beam_connections.append({
+        "beam_idx": be["beam_idx"],
+        "node1_idx": len(all_nodes),  # 仮のインデックス
+        "node2_idx": len(all_nodes) + 1,
+        "node1_coord": be["pt1"],
+        "node2_coord": be["pt2"],
+        "angle": be["angle"],
+        "length": np.linalg.norm(be["pt2"] - be["pt1"])
+    })
+    # 梁端点を節点リストに追加
+    all_nodes.append(be["pt1"])
+    all_nodes.append(be["pt2"])
+    node_info.append({"type": "beam_endpoint", "beam_idx": be["beam_idx"]})
+    node_info.append({"type": "beam_endpoint", "beam_idx": be["beam_idx"]})
+
+# 荷重接続処理を再実行
+load_connections = []
+udl_on_beams = []
+
+for l in loads:
+    load_type = l["type"]
+    center = l["pts"].mean(axis=0)
+    
+    if load_type == "udl":
+        # 等分布荷重処理（簡略化）
+        best_beam_idx = 0  # 最初の梁に適用
+        if beam_connections:
+            udl_on_beams.append({
+                "beam_idx": best_beam_idx,
+                "load_value": udl_value,
+                "direction": [0, 1],  # 下向き
+                "angle": 90
+            })
+    else:
+        # 集中荷重処理（簡略化）
+        best_node_idx = find_nearest_node(center, all_nodes)
+        if best_node_idx >= 0:
+            load_connections.append({
+                "type": load_type,
+                "node_idx": best_node_idx,
+                "direction": [0, 1],  # 下向き
+                "angle": 90,
+                "conf": l["conf"],
+                "is_udl": False
+            })
 
 # ===== FEM解析用データ構造への変換 =====
 with st.spinner("FEM解析データ準備中..."):
