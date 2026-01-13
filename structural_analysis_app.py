@@ -2252,8 +2252,8 @@ pattern_cols = st.columns(4)
 pattern_images = []
 for i, pattern in enumerate(analysis_patterns):
     with pattern_cols[i]:
-        # パターン用の清書図を生成（元画像をベースに）
-        pattern_cleaned = img.copy()
+        # 白紙の画像を作成（元画像と同じサイズ）
+        pattern_cleaned = np.ones_like(img) * 255  # 白い背景
         
         # パターンの支点を描画
         for s in pattern["supports"]:
