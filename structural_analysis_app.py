@@ -2532,36 +2532,6 @@ try:
     for df in fig_list_deform_scaled:
         ax.plot(df['ax'], df['ay'], 'black', linewidth=6)
     
-    # 節点（15度刻みで調整された位置に表示）
-    adjusted_node_positions = {}
-    
-    # 各梁接続から15度補正済みの節点位置を計算
-    for conn in beam_connections:
-        node1_idx = conn["node1_idx"]
-        node2_idx = conn["node2_idx"]
-        
-        pt1_orig = np.array(conn["node1_coord"])
-        pt2_orig = np.array(conn["node2_coord"])
-        
-        # 15度刻みに角度を補正
-        vector = pt2_orig - pt1_orig
-        angle = math.degrees(math.atan2(vector[1], vector[0]))
-        corrected_angle = round(angle / 15) * 15
-        
-        # 補正後の座標を計算
-        length = np.linalg.norm(vector)
-        angle_rad = math.radians(corrected_angle)
-        pt2_corrected = pt1_orig + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
-        
-        # 調整済み節点位置を記録
-        adjusted_node_positions[node1_idx] = pt1_orig
-        adjusted_node_positions[node2_idx] = pt2_corrected
-    
-    # 調整済み節点位置を表示
-    for node_idx, pos in adjusted_node_positions.items():
-        ax.plot(pos[0], pos[1], 'ko', markersize=8)
-        ax.text(pos[0], pos[1], f'  N{node_idx}', fontsize=10)
-    
     # 軸、タイトル、枠線を削除
     ax.set_xticks([])
     ax.set_yticks([])
