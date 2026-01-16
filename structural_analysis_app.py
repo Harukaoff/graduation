@@ -2573,7 +2573,7 @@ try:
     st.pyplot(fig)
     
     # 応力図の表示
-    st.write("**応力図**")
+    st.write("**【応力図】**")
     
     # 応力図用のデータを作成（スケール調整なし）
     fig_list_original = draw_lib.make_figure(M_S)
@@ -2613,7 +2613,7 @@ try:
         fig_list.append(df_scaled)
     
     # 軸力図(N)
-    st.write("**【軸力図 (N)】**")
+    st.write("**軸力図 (N)**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2651,7 +2651,7 @@ try:
     st.pyplot(fig)
     
     # せん断力図(Q)
-    st.write("**【せん断力図 (Q)】**")
+    st.write("**せん断力図 (Q)**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2689,7 +2689,7 @@ try:
     st.pyplot(fig)
     
     # 曲げモーメント図(M)
-    st.write("**【曲げモーメント図 (M)】**")
+    st.write("**曲げモーメント図 (M)**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
