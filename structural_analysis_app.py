@@ -2466,7 +2466,7 @@ try:
     st.subheader("📊 解析結果")
     
     # 変形図の表示
-    st.write("**変形図**")
+    st.write("**【変形図】**")
     
     # draw_lib.make_figureを使用して変形図を作成
     fig_list_deform = draw_lib.make_figure(M_S)
@@ -2613,7 +2613,7 @@ try:
         fig_list.append(df_scaled)
     
     # 軸力図(N)
-    st.write("**軸力図 (N)**")
+    st.write("**【軸力図 (N)】**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2651,7 +2651,7 @@ try:
     st.pyplot(fig)
     
     # せん断力図(Q)
-    st.write("**せん断力図 (Q)**")
+    st.write("**【せん断力図 (Q)】**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2689,7 +2689,7 @@ try:
     st.pyplot(fig)
     
     # 曲げモーメント図(M)
-    st.write("**曲げモーメント図 (M)**")
+    st.write("**【曲げモーメント図 (M)】**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
