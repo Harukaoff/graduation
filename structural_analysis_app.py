@@ -389,8 +389,8 @@ if not MODEL_PATH or not os.path.exists(MODEL_PATH):
     st.error(f"モデルパスが存在しません: {MODEL_PATH}")
     st.stop()
 
-if not st.button("🚀 解析実行", type="primary"):
-    st.stop()
+# 画像アップロード後、自動で解析開始
+# ボタンは不要
 
 # 画像サイズを取得
 img_height, img_width = img.shape[:2]
