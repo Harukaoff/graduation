@@ -2511,6 +2511,11 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
+    # 背景を薄い青に設定（図全体）
+    fig.patch.set_facecolor('lightblue')
+    # プロット領域を白に設定
+    ax.set_facecolor('white')
+    
     # 変形前の形状（グレー）- 15度刻みで角度補正
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
@@ -2532,12 +2537,14 @@ try:
     for df in fig_list_deform_scaled:
         ax.plot(df['ax'], df['ay'], 'black', linewidth=6)
     
-    # 軸、タイトル、枠線を削除
+    # 軸、タイトルを削除、枠線を表示
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
+    # 枠線を表示
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_edgecolor('black')
+        spine.set_linewidth(1)
     ax.spines['left'].set_visible(False)
     ax.invert_yaxis()
     st.pyplot(fig)
@@ -2587,6 +2594,11 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
+    # 背景を薄い青に設定（図全体）
+    fig.patch.set_facecolor('lightblue')
+    # プロット領域を白に設定
+    ax.set_facecolor('white')
+    
     # 部材を15度刻みで表示
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
@@ -2610,13 +2622,13 @@ try:
                list(df['y']) + list(df['Ny'][::-1]), 
                'blue', alpha=0.3)
     
-    # 軸、タイトル、枠線を削除
+    # 軸、タイトルを削除、枠線を表示
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_edgecolor('black')
+        spine.set_linewidth(1)
     ax.invert_yaxis()
     st.pyplot(fig)
     
@@ -2624,6 +2636,11 @@ try:
     st.write("**せん断力図 (Q)**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
+    
+    # 背景を薄い青に設定（図全体）
+    fig.patch.set_facecolor('lightblue')
+    # プロット領域を白に設定
+    ax.set_facecolor('white')
     
     # 部材を15度刻みで表示
     for conn in beam_connections:
@@ -2648,13 +2665,13 @@ try:
                list(df['y']) + list(df['Qy'][::-1]), 
                'green', alpha=0.3)
     
-    # 軸、タイトル、枠線を削除
+    # 軸、タイトルを削除、枠線を表示
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_edgecolor('black')
+        spine.set_linewidth(1)
     ax.invert_yaxis()
     st.pyplot(fig)
     
@@ -2662,6 +2679,11 @@ try:
     st.write("**曲げモーメント図 (M)**")
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
+    
+    # 背景を薄い青に設定（図全体）
+    fig.patch.set_facecolor('lightblue')
+    # プロット領域を白に設定
+    ax.set_facecolor('white')
     
     # 部材を15度刻みで表示
     for conn in beam_connections:
@@ -2686,13 +2708,13 @@ try:
                list(df['y']) + list(df['My'][::-1]), 
                'red', alpha=0.3)
     
-    # 軸、タイトル、枠線を削除
+    # 軸、タイトルを削除、枠線を表示
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_edgecolor('black')
+        spine.set_linewidth(1)
     ax.invert_yaxis()
     st.pyplot(fig)
     
