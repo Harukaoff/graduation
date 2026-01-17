@@ -2465,6 +2465,16 @@ try:
     # 結果表示
     st.subheader("📊 解析結果")
     
+    # 解析結果全体を薄い青色の背景で囲む
+    st.markdown("""
+    <style>
+    .main .block-container {
+        background-color: lightblue;
+        padding: 2rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # 変形図の表示
     st.write("**【変形図】**")
     
