@@ -2468,15 +2468,29 @@ try:
     # 解析結果全体を薄い青色の背景で囲む
     st.markdown("""
     <style>
-    .main .block-container {
-        background-color: lightblue;
-        padding: 2rem;
+    /* 解析結果セクション全体の背景色 */
+    [data-testid="stVerticalBlock"] > [style*="flex-direction: column"] > [data-testid="stVerticalBlock"] {
+        background-color: lightblue !important;
+        padding: 20px !important;
+        border-radius: 10px !important;
+    }
+    /* テキスト要素の背景も薄い青に */
+    .stMarkdown {
+        background-color: transparent !important;
+    }
+    /* pyplot図の背景 */
+    .stPlotlyChart, .element-container {
+        background-color: transparent !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # 変形図の表示
-    st.write("**【変形図】**")
+    # コンテナで囲んで背景色を確実に適用
+    with st.container():
+        st.markdown('<div style="background-color: lightblue; padding: 20px; border-radius: 10px;">', unsafe_allow_html=True)
+        
+        # 変形図の表示
+        st.write("**【変形図】**")
     
     # draw_lib.make_figureを使用して変形図を作成
     fig_list_deform = draw_lib.make_figure(M_S)
@@ -2731,6 +2745,9 @@ try:
     # 変位・反力の表示
     st.write("**節点変位・反力**")
     st.dataframe(D_R, use_container_width=True)
+    
+    # 背景色のdivを閉じる
+    st.markdown('</div>', unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"❌ 解析エラー: {str(e)}")
