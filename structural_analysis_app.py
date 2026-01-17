@@ -2490,7 +2490,7 @@ try:
         st.markdown('<div style="background-color: lightblue; padding: 20px; border-radius: 10px;">', unsafe_allow_html=True)
         
         # 変形図の表示
-        st.write("**【変形図】**")
+        st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>【変形図】</strong></div>', unsafe_allow_html=True)
     
     # draw_lib.make_figureを使用して変形図を作成
     fig_list_deform = draw_lib.make_figure(M_S)
@@ -2574,7 +2574,7 @@ try:
     st.pyplot(fig)
     
     # 応力図の表示
-    st.write("**【応力図】**")
+    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>【応力図】</strong></div>', unsafe_allow_html=True)
     
     # 応力図用のデータを作成（スケール調整なし）
     fig_list_original = draw_lib.make_figure(M_S)
@@ -2614,7 +2614,7 @@ try:
         fig_list.append(df_scaled)
     
     # 軸力図(N)
-    st.write("**軸力図 (N)**")
+    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>軸力図 (N)</strong></div>', unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2657,7 +2657,7 @@ try:
     st.pyplot(fig)
     
     # せん断力図(Q)
-    st.write("**せん断力図 (Q)**")
+    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>せん断力図 (Q)</strong></div>', unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2700,7 +2700,7 @@ try:
     st.pyplot(fig)
     
     # 曲げモーメント図(M)
-    st.write("**曲げモーメント図 (M)**")
+    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>曲げモーメント図 (M)</strong></div>', unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
@@ -2743,7 +2743,7 @@ try:
     st.pyplot(fig)
     
     # 変位・反力の表示
-    st.write("**節点変位・反力**")
+    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>節点変位・反力</strong></div>', unsafe_allow_html=True)
     st.dataframe(D_R, use_container_width=True)
     
     # 背景色のdivを閉じる
