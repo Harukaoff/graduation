@@ -2583,7 +2583,6 @@ try:
         spine.set_visible(True)
         spine.set_edgecolor('black')
         spine.set_linewidth(1)
-    ax.spines['left'].set_visible(False)
     ax.invert_yaxis()
     st.pyplot(fig)
     
