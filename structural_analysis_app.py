@@ -2512,24 +2512,64 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 変形前の形状（グレー）- 15度刻みで角度補正（統合梁は既に補正済み）
-    for conn in beam_connections:
-        pt1 = np.array(conn["node1_coord"])
-        pt2 = np.array(conn["node2_coord"])
-        
-        # 統合梁の場合は既に補正済みなのでそのまま使用
-        if conn.get("is_merged", False):
-            pt2_corrected = pt2
+    # 変形前の形状（グレー）- beam_idxごとにグループ化して15度刻みで描画
+    # 元の梁ごとにセグメントをグループ化
+    original_beams = {}
+    for i, conn in enumerate(beam_connections):
+        original_beam_idx = conn["beam_idx"]
+        if original_beam_idx not in original_beams:
+            original_beams[original_beam_idx] = []
+        original_beams[original_beam_idx].append(conn)
+    
+    # 各元の梁について描画
+    for original_beam_idx, segments in original_beams.items():
+        if len(segments) == 1:
+            # 分割されていない梁
+            conn = segments[0]
+            pt1 = np.array(conn["node1_coord"])
+            pt2 = np.array(conn["node2_coord"])
+            
+            # 統合梁の場合は既に補正済み
+            if conn.get("is_merged", False):
+                pt2_corrected = pt2
+            else:
+                # 通常梁は15度刻みに補正
+                vector = pt2 - pt1
+                angle = math.degrees(math.atan2(vector[1], vector[0]))
+                corrected_angle = round(angle / 15) * 15
+                length = np.linalg.norm(vector)
+                angle_rad = math.radians(corrected_angle)
+                pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7)
         else:
-            # 通常梁は15度刻みに補正
+            # 分割された梁：全セグメントの端点を収集して最も離れた2点を見つける
+            all_endpoints = []
+            for seg in segments:
+                all_endpoints.append(np.array(seg["node1_coord"]))
+                all_endpoints.append(np.array(seg["node2_coord"]))
+            
+            # 最も離れた2点を見つける
+            max_dist = 0
+            pt1, pt2 = all_endpoints[0], all_endpoints[1]
+            for i, coord1 in enumerate(all_endpoints):
+                for j, coord2 in enumerate(all_endpoints):
+                    if i >= j:
+                        continue
+                    dist = np.linalg.norm(coord2 - coord1)
+                    if dist > max_dist:
+                        max_dist = dist
+                        pt1, pt2 = coord1, coord2
+            
+            # 15度刻みに補正
             vector = pt2 - pt1
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             corrected_angle = round(angle / 15) * 15
             length = np.linalg.norm(vector)
             angle_rad = math.radians(corrected_angle)
             pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
-        
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7)
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7)
     
     # 変形後の形状（黒）- 調整済みデータを使用
     for df in fig_list_deform_scaled:
@@ -2592,24 +2632,56 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を15度刻みで表示（統合梁は既に補正済み）
-    for conn in beam_connections:
-        pt1 = np.array(conn["node1_coord"])
-        pt2 = np.array(conn["node2_coord"])
-        
-        # 統合梁の場合は既に補正済みなのでそのまま使用
-        if conn.get("is_merged", False):
-            pt2_corrected = pt2
+    # 部材をbeam_idxごとにグループ化して15度刻みで描画
+    original_beams = {}
+    for i, conn in enumerate(beam_connections):
+        original_beam_idx = conn["beam_idx"]
+        if original_beam_idx not in original_beams:
+            original_beams[original_beam_idx] = []
+        original_beams[original_beam_idx].append(conn)
+    
+    for original_beam_idx, segments in original_beams.items():
+        if len(segments) == 1:
+            conn = segments[0]
+            pt1 = np.array(conn["node1_coord"])
+            pt2 = np.array(conn["node2_coord"])
+            
+            if conn.get("is_merged", False):
+                pt2_corrected = pt2
+            else:
+                vector = pt2 - pt1
+                angle = math.degrees(math.atan2(vector[1], vector[0]))
+                corrected_angle = round(angle / 15) * 15
+                length = np.linalg.norm(vector)
+                angle_rad = math.radians(corrected_angle)
+                pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
         else:
-            # 通常梁は15度刻みに補正
+            all_endpoints = []
+            for seg in segments:
+                all_endpoints.append(np.array(seg["node1_coord"]))
+                all_endpoints.append(np.array(seg["node2_coord"]))
+            
+            max_dist = 0
+            pt1, pt2 = all_endpoints[0], all_endpoints[1]
+            for i, coord1 in enumerate(all_endpoints):
+                for j, coord2 in enumerate(all_endpoints):
+                    if i >= j:
+                        continue
+                    dist = np.linalg.norm(coord2 - coord1)
+                    if dist > max_dist:
+                        max_dist = dist
+                        pt1, pt2 = coord1, coord2
+            
             vector = pt2 - pt1
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             corrected_angle = round(angle / 15) * 15
             length = np.linalg.norm(vector)
             angle_rad = math.radians(corrected_angle)
             pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
-        
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
@@ -2632,24 +2704,56 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を15度刻みで表示（統合梁は既に補正済み）
-    for conn in beam_connections:
-        pt1 = np.array(conn["node1_coord"])
-        pt2 = np.array(conn["node2_coord"])
-        
-        # 統合梁の場合は既に補正済みなのでそのまま使用
-        if conn.get("is_merged", False):
-            pt2_corrected = pt2
+    # 部材をbeam_idxごとにグループ化して15度刻みで描画
+    original_beams = {}
+    for i, conn in enumerate(beam_connections):
+        original_beam_idx = conn["beam_idx"]
+        if original_beam_idx not in original_beams:
+            original_beams[original_beam_idx] = []
+        original_beams[original_beam_idx].append(conn)
+    
+    for original_beam_idx, segments in original_beams.items():
+        if len(segments) == 1:
+            conn = segments[0]
+            pt1 = np.array(conn["node1_coord"])
+            pt2 = np.array(conn["node2_coord"])
+            
+            if conn.get("is_merged", False):
+                pt2_corrected = pt2
+            else:
+                vector = pt2 - pt1
+                angle = math.degrees(math.atan2(vector[1], vector[0]))
+                corrected_angle = round(angle / 15) * 15
+                length = np.linalg.norm(vector)
+                angle_rad = math.radians(corrected_angle)
+                pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
         else:
-            # 通常梁は15度刻みに補正
+            all_endpoints = []
+            for seg in segments:
+                all_endpoints.append(np.array(seg["node1_coord"]))
+                all_endpoints.append(np.array(seg["node2_coord"]))
+            
+            max_dist = 0
+            pt1, pt2 = all_endpoints[0], all_endpoints[1]
+            for i, coord1 in enumerate(all_endpoints):
+                for j, coord2 in enumerate(all_endpoints):
+                    if i >= j:
+                        continue
+                    dist = np.linalg.norm(coord2 - coord1)
+                    if dist > max_dist:
+                        max_dist = dist
+                        pt1, pt2 = coord1, coord2
+            
             vector = pt2 - pt1
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             corrected_angle = round(angle / 15) * 15
             length = np.linalg.norm(vector)
             angle_rad = math.radians(corrected_angle)
             pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
-        
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
@@ -2672,24 +2776,56 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を15度刻みで表示（統合梁は既に補正済み）
-    for conn in beam_connections:
-        pt1 = np.array(conn["node1_coord"])
-        pt2 = np.array(conn["node2_coord"])
-        
-        # 統合梁の場合は既に補正済みなのでそのまま使用
-        if conn.get("is_merged", False):
-            pt2_corrected = pt2
+    # 部材をbeam_idxごとにグループ化して15度刻みで描画
+    original_beams = {}
+    for i, conn in enumerate(beam_connections):
+        original_beam_idx = conn["beam_idx"]
+        if original_beam_idx not in original_beams:
+            original_beams[original_beam_idx] = []
+        original_beams[original_beam_idx].append(conn)
+    
+    for original_beam_idx, segments in original_beams.items():
+        if len(segments) == 1:
+            conn = segments[0]
+            pt1 = np.array(conn["node1_coord"])
+            pt2 = np.array(conn["node2_coord"])
+            
+            if conn.get("is_merged", False):
+                pt2_corrected = pt2
+            else:
+                vector = pt2 - pt1
+                angle = math.degrees(math.atan2(vector[1], vector[0]))
+                corrected_angle = round(angle / 15) * 15
+                length = np.linalg.norm(vector)
+                angle_rad = math.radians(corrected_angle)
+                pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
         else:
-            # 通常梁は15度刻みに補正
+            all_endpoints = []
+            for seg in segments:
+                all_endpoints.append(np.array(seg["node1_coord"]))
+                all_endpoints.append(np.array(seg["node2_coord"]))
+            
+            max_dist = 0
+            pt1, pt2 = all_endpoints[0], all_endpoints[1]
+            for i, coord1 in enumerate(all_endpoints):
+                for j, coord2 in enumerate(all_endpoints):
+                    if i >= j:
+                        continue
+                    dist = np.linalg.norm(coord2 - coord1)
+                    if dist > max_dist:
+                        max_dist = dist
+                        pt1, pt2 = coord1, coord2
+            
             vector = pt2 - pt1
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             corrected_angle = round(angle / 15) * 15
             length = np.linalg.norm(vector)
             angle_rad = math.radians(corrected_angle)
             pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
-        
-        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
+            
+            ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
