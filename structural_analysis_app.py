@@ -2127,7 +2127,7 @@ for i, node in enumerate(all_nodes):
         cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 15, int(node_coord[1]) - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 150, 0), 3)
 
-# 荷重を描画（OpenCVの矢印で直接描画）
+# 荷重を描画（集中荷重・等分布荷重は直接描画、モーメント荷重はテンプレート使用）
 for l in load_connections:
     name = l["type"]
     angle = l["angle"]
@@ -2142,8 +2142,70 @@ for l in load_connections:
     else:
         proj = np.array(l["proj_coord"])
     
+    # モーメント荷重の場合はテンプレート画像を使用
+    if name in ["momentl", "momentr"]:
+        # テンプレート画像を読み込み
+        template_img = cv2.imread(template_path(name), cv2.IMREAD_UNCHANGED)
+        if template_img is not None:
+            # テンプレートのサイズ
+            h, w = template_img.shape[:2]
+            
+            # 回転行列を作成（角度は度数法）
+            rotation_matrix = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)
+            
+            # 回転後の画像サイズを計算
+            cos_val = np.abs(rotation_matrix[0, 0])
+            sin_val = np.abs(rotation_matrix[0, 1])
+            new_w = int(h * sin_val + w * cos_val)
+            new_h = int(h * cos_val + w * sin_val)
+            
+            # 回転行列の平行移動成分を調整
+            rotation_matrix[0, 2] += (new_w / 2) - (w / 2)
+            rotation_matrix[1, 2] += (new_h / 2) - (h / 2)
+            
+            # 画像を回転
+            rotated = cv2.warpAffine(template_img, rotation_matrix, (new_w, new_h), 
+                                    flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, 
+                                    borderValue=(255, 255, 255, 0))
+            
+            # 貼り付け位置を計算（projを中心に配置）
+            paste_x = int(proj[0] - new_w / 2)
+            paste_y = int(proj[1] - new_h / 2)
+            
+            # 画像を貼り付け
+            if rotated.shape[2] == 4:  # アルファチャンネルがある場合
+                alpha = rotated[:, :, 3] / 255.0
+                for c in range(3):
+                    y1 = max(0, paste_y)
+                    y2 = min(cleaned.shape[0], paste_y + new_h)
+                    x1 = max(0, paste_x)
+                    x2 = min(cleaned.shape[1], paste_x + new_w)
+                    
+                    src_y1 = y1 - paste_y
+                    src_y2 = src_y1 + (y2 - y1)
+                    src_x1 = x1 - paste_x
+                    src_x2 = src_x1 + (x2 - x1)
+                    
+                    if y2 > y1 and x2 > x1:
+                        cleaned[y1:y2, x1:x2, c] = (
+                            alpha[src_y1:src_y2, src_x1:src_x2] * rotated[src_y1:src_y2, src_x1:src_x2, c] +
+                            (1 - alpha[src_y1:src_y2, src_x1:src_x2]) * cleaned[y1:y2, x1:x2, c]
+                        )
+            else:  # アルファチャンネルがない場合
+                y1 = max(0, paste_y)
+                y2 = min(cleaned.shape[0], paste_y + new_h)
+                x1 = max(0, paste_x)
+                x2 = min(cleaned.shape[1], paste_x + new_w)
+                
+                src_y1 = y1 - paste_y
+                src_y2 = src_y1 + (y2 - y1)
+                src_x1 = x1 - paste_x
+                src_x2 = src_x1 + (x2 - x1)
+                
+                if y2 > y1 and x2 > x1:
+                    cleaned[y1:y2, x1:x2] = rotated[src_y1:src_y2, src_x1:src_x2, :3]
     # 等分布荷重の場合は複数の矢印を描画
-    if l.get("is_udl", False) and "udl_arrow_positions" in l:
+    elif l.get("is_udl", False) and "udl_arrow_positions" in l:
         # 複数の矢印を描画し、始点を記録
         arrow_start_points = []
         for pos in l["udl_arrow_positions"]:
