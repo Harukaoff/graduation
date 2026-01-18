@@ -2534,9 +2534,19 @@ try:
             ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
-        ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
-        ax.fill(list(df['x']) + list(df['Nx'][::-1]), 
-               list(df['y']) + list(df['Ny'][::-1]), 
+        # 端点の応力値をゼロに設定（飛び出しを防ぐ）
+        df_copy = df.copy()
+        if len(df_copy) > 0:
+            # 最初の点：応力値をゼロに（座標を梁の座標と同じにする）
+            df_copy.iloc[0, df_copy.columns.get_loc('Nx')] = df_copy.iloc[0, df_copy.columns.get_loc('x')]
+            df_copy.iloc[0, df_copy.columns.get_loc('Ny')] = df_copy.iloc[0, df_copy.columns.get_loc('y')]
+            # 最後の点：応力値をゼロに
+            df_copy.iloc[-1, df_copy.columns.get_loc('Nx')] = df_copy.iloc[-1, df_copy.columns.get_loc('x')]
+            df_copy.iloc[-1, df_copy.columns.get_loc('Ny')] = df_copy.iloc[-1, df_copy.columns.get_loc('y')]
+        
+        ax.plot(df_copy['Nx'], df_copy['Ny'], 'b-', linewidth=3)
+        ax.fill(list(df_copy['x']) + list(df_copy['Nx'][::-1]), 
+               list(df_copy['y']) + list(df_copy['Ny'][::-1]), 
                'blue', alpha=0.3)
     
     # 軸、タイトルを削除、枠線を表示
@@ -2606,9 +2616,19 @@ try:
             ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
-        ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
-        ax.fill(list(df['x']) + list(df['Qx'][::-1]), 
-               list(df['y']) + list(df['Qy'][::-1]), 
+        # 端点の応力値をゼロに設定（飛び出しを防ぐ）
+        df_copy = df.copy()
+        if len(df_copy) > 0:
+            # 最初の点：応力値をゼロに
+            df_copy.iloc[0, df_copy.columns.get_loc('Qx')] = df_copy.iloc[0, df_copy.columns.get_loc('x')]
+            df_copy.iloc[0, df_copy.columns.get_loc('Qy')] = df_copy.iloc[0, df_copy.columns.get_loc('y')]
+            # 最後の点：応力値をゼロに
+            df_copy.iloc[-1, df_copy.columns.get_loc('Qx')] = df_copy.iloc[-1, df_copy.columns.get_loc('x')]
+            df_copy.iloc[-1, df_copy.columns.get_loc('Qy')] = df_copy.iloc[-1, df_copy.columns.get_loc('y')]
+        
+        ax.plot(df_copy['Qx'], df_copy['Qy'], 'g-', linewidth=3)
+        ax.fill(list(df_copy['x']) + list(df_copy['Qx'][::-1]), 
+               list(df_copy['y']) + list(df_copy['Qy'][::-1]), 
                'green', alpha=0.3)
     
     # 軸、タイトルを削除、枠線を表示
@@ -2678,9 +2698,19 @@ try:
             ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
-        ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
-        ax.fill(list(df['x']) + list(df['Mx'][::-1]), 
-               list(df['y']) + list(df['My'][::-1]), 
+        # 端点の応力値をゼロに設定（飛び出しを防ぐ）
+        df_copy = df.copy()
+        if len(df_copy) > 0:
+            # 最初の点：応力値をゼロに
+            df_copy.iloc[0, df_copy.columns.get_loc('Mx')] = df_copy.iloc[0, df_copy.columns.get_loc('x')]
+            df_copy.iloc[0, df_copy.columns.get_loc('My')] = df_copy.iloc[0, df_copy.columns.get_loc('y')]
+            # 最後の点：応力値をゼロに
+            df_copy.iloc[-1, df_copy.columns.get_loc('Mx')] = df_copy.iloc[-1, df_copy.columns.get_loc('x')]
+            df_copy.iloc[-1, df_copy.columns.get_loc('My')] = df_copy.iloc[-1, df_copy.columns.get_loc('y')]
+        
+        ax.plot(df_copy['Mx'], df_copy['My'], 'r-', linewidth=3)
+        ax.fill(list(df_copy['x']) + list(df_copy['Mx'][::-1]), 
+               list(df_copy['y']) + list(df_copy['My'][::-1]), 
                'red', alpha=0.3)
     
     # 軸、タイトルを削除、枠線を表示
