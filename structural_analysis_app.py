@@ -1114,7 +1114,7 @@ if beams_to_remove:
 
 # ===== 近接する梁の端点を接続 =====
 # 異なる梁の端点が近い場合、同じ節点を共有するように統合
-endpoint_merge_threshold = 50  # 50ピクセル以内なら接続
+endpoint_merge_threshold = 100  # 100ピクセル以内なら接続
 
 # 全ての梁の端点を収集
 beam_endpoints_list = []
