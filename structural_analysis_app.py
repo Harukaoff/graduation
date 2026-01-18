@@ -2512,12 +2512,24 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 変形前の形状（グレー）- 元の座標をそのまま使用
+    # 変形前の形状（グレー）- 15度刻みで角度補正（統合梁は既に補正済み）
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
         pt2 = np.array(conn["node2_coord"])
         
-        ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'gray', linewidth=6, alpha=0.7)
+        # 統合梁の場合は既に補正済みなのでそのまま使用
+        if conn.get("is_merged", False):
+            pt2_corrected = pt2
+        else:
+            # 通常梁は15度刻みに補正
+            vector = pt2 - pt1
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'gray', linewidth=6, alpha=0.7)
     
     # 変形後の形状（黒）- 調整済みデータを使用
     for df in fig_list_deform_scaled:
@@ -2580,12 +2592,24 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を元の座標で表示
+    # 部材を15度刻みで表示（統合梁は既に補正済み）
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
         pt2 = np.array(conn["node2_coord"])
         
-        ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6)
+        # 統合梁の場合は既に補正済みなのでそのまま使用
+        if conn.get("is_merged", False):
+            pt2_corrected = pt2
+        else:
+            # 通常梁は15度刻みに補正
+            vector = pt2 - pt1
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Nx'], df['Ny'], 'b-', linewidth=3)
@@ -2608,12 +2632,24 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を元の座標で表示
+    # 部材を15度刻みで表示（統合梁は既に補正済み）
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
         pt2 = np.array(conn["node2_coord"])
         
-        ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6)
+        # 統合梁の場合は既に補正済みなのでそのまま使用
+        if conn.get("is_merged", False):
+            pt2_corrected = pt2
+        else:
+            # 通常梁は15度刻みに補正
+            vector = pt2 - pt1
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Qx'], df['Qy'], 'g-', linewidth=3)
@@ -2636,12 +2672,24 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 部材を元の座標で表示
+    # 部材を15度刻みで表示（統合梁は既に補正済み）
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
         pt2 = np.array(conn["node2_coord"])
         
-        ax.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], 'black', linewidth=6)
+        # 統合梁の場合は既に補正済みなのでそのまま使用
+        if conn.get("is_merged", False):
+            pt2_corrected = pt2
+        else:
+            # 通常梁は15度刻みに補正
+            vector = pt2 - pt1
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            corrected_angle = round(angle / 15) * 15
+            length = np.linalg.norm(vector)
+            angle_rad = math.radians(corrected_angle)
+            pt2_corrected = pt1 + length * np.array([math.cos(angle_rad), math.sin(angle_rad)])
+        
+        ax.plot([pt1[0], pt2_corrected[0]], [pt1[1], pt2_corrected[1]], 'black', linewidth=6)
     
     for df in fig_list:
         ax.plot(df['Mx'], df['My'], 'r-', linewidth=3)
