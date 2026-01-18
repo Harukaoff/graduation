@@ -2512,11 +2512,6 @@ try:
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
     
-    # 背景を薄い青に設定（図全体）
-    fig.patch.set_facecolor('lightblue')
-    # プロット領域を白に設定
-    ax.set_facecolor('white')
-    
     # 変形前の形状（グレー）- 15度刻みで角度補正
     for conn in beam_connections:
         pt1 = np.array(conn["node1_coord"])
