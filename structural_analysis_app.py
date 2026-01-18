@@ -1946,14 +1946,14 @@ for l in load_connections:
         for pos in l["udl_arrow_positions"]:
             pos_array = np.array(pos)
             
-            # 角度から矢印の終点を計算（矢印の長さを設定）
+            # 角度から矢印の始点を計算（矢印の長さを設定）
             arrow_length = 240  # 80 * 3
             angle_rad = np.deg2rad(angle)
-            # 矢印は梁に向かう方向なので、終点は梁に近い位置
-            end_x = pos_array[0] + arrow_length * np.cos(angle_rad)
-            end_y = pos_array[1] + arrow_length * np.sin(angle_rad)
-            start_pt = tuple(map(int, pos_array))
-            end_pt = (int(end_x), int(end_y))
+            # 矢印の始点は梁から離れた位置、矢じりは梁に向かう
+            start_x = pos_array[0] - arrow_length * np.cos(angle_rad)
+            start_y = pos_array[1] - arrow_length * np.sin(angle_rad)
+            start_pt = (int(start_x), int(start_y))
+            end_pt = tuple(map(int, pos_array))
             
             # 矢印を描画（黒色）
             cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 0, 0), 8, tipLength=0.3)
