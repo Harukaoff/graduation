@@ -106,7 +106,7 @@ def member_stress(e_l, d_r, n_d): #部材応力計算
     # e_l : element_list
     # d_r : 各接点の変位・反力df
 
-    step = 10 #形状関数xの増加量 1~
+    step = 3 #形状関数xの増加量 1~ (小さいほど滑らかな曲線)
 
     node = n_d[['x', 'y']].values.tolist() #節点の座標リスト
 
