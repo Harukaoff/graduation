@@ -2255,6 +2255,9 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
         if combined_df is not None:
             df_adjusted = combined_df.copy()
             
+            # 元の部材の方向ベクトル
+            orig_vector = pt2_orig - pt1_orig
+            
             # 部材上の各点を補正済み部材上の対応点に変換
             for j in range(len(df_adjusted)):
                 # 元の部材上での位置比率を計算
