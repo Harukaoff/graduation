@@ -1948,7 +1948,8 @@ for l in load_connections:
             
             # 角度から矢印の始点を計算（矢印の長さを設定）
             arrow_length = 240  # 80 * 3
-            angle_rad = np.deg2rad(angle)
+            # 等分布荷重は角度を180度反転
+            angle_rad = np.deg2rad(angle + 180)
             # 矢印の始点は梁から離れた位置、矢じりは梁に向かう
             start_x = pos_array[0] - arrow_length * np.cos(angle_rad)
             start_y = pos_array[1] - arrow_length * np.sin(angle_rad)
