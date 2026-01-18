@@ -1947,7 +1947,7 @@ for l in load_connections:
             pos_array = np.array(pos)
             
             # 角度から矢印の始点を計算（矢印の長さを設定）
-            arrow_length = 80
+            arrow_length = 240  # 80 * 3
             angle_rad = np.deg2rad(angle)
             # 矢印は梁に向かう方向なので、始点は梁から離れた位置
             start_x = pos_array[0] - arrow_length * np.cos(angle_rad)
@@ -1955,12 +1955,12 @@ for l in load_connections:
             start_pt = (int(start_x), int(start_y))
             end_pt = tuple(map(int, pos_array))
             
-            # 矢印を描画（濃い緑色）
-            cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 150, 0), 8, tipLength=0.3)
+            # 矢印を描画（黒色）
+            cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 0, 0), 8, tipLength=0.3)
     else:
         # 集中荷重の場合
         # 角度から矢印の始点を計算
-        arrow_length = 100
+        arrow_length = 300  # 100 * 3
         angle_rad = np.deg2rad(angle)
         # 矢印は梁に向かう方向なので、始点は梁から離れた位置
         start_x = proj[0] - arrow_length * np.cos(angle_rad)
@@ -1968,8 +1968,8 @@ for l in load_connections:
         start_pt = (int(start_x), int(start_y))
         end_pt = tuple(map(int, proj))
         
-        # 矢印を描画（濃い緑色）
-        cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 150, 0), 10, tipLength=0.25)
+        # 矢印を描画（黒色）
+        cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 0, 0), 10, tipLength=0.25)
         
         # 梁上の接続点に円を描画
         cv2.circle(cleaned, end_pt, 10, (200, 0, 0), 4)
