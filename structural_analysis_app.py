@@ -2406,13 +2406,23 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
         if combined_df is not None:
             df_adjusted = combined_df.copy()
             
+            # 元の部材と補正後の部材の角度差を計算
+            orig_vector = pt2_orig - pt1_orig
+            corrected_vector = pt2_corrected - pt1_orig
+            orig_angle = math.atan2(orig_vector[1], orig_vector[0])
+            corrected_angle = math.atan2(corrected_vector[1], corrected_vector[0])
+            angle_diff = corrected_angle - orig_angle
+            
+            # 回転行列を作成
+            cos_diff = math.cos(angle_diff)
+            sin_diff = math.sin(angle_diff)
+            
             # 部材上の各点を補正済み部材上の対応点に変換
             for j in range(len(df_adjusted)):
                 # 元の部材上での位置比率を計算
                 orig_point = np.array([combined_df.iloc[j]['x'], combined_df.iloc[j]['y']])
                 
                 # 元の部材の方向ベクトル
-                orig_vector = pt2_orig - pt1_orig
                 orig_length = np.linalg.norm(orig_vector)
                 
                 if orig_length > 0:
@@ -2427,24 +2437,33 @@ def adjust_stress_data_to_corrected_beams(fig_list, beam_connections):
                     df_adjusted.iloc[j, df_adjusted.columns.get_loc('x')] = corrected_point[0]
                     df_adjusted.iloc[j, df_adjusted.columns.get_loc('y')] = corrected_point[1]
                     
-                    # 応力図の座標も同様に調整
+                    # 応力図の座標も同様に調整（回転を適用）
                     if 'Nx' in df_adjusted.columns:
                         # 軸力図の座標調整
                         stress_offset = np.array([combined_df.iloc[j]['Nx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Ny'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Nx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Ny')] = corrected_point[1] + stress_offset[1]
+                        # オフセットを回転
+                        rotated_offset_x = stress_offset[0] * cos_diff - stress_offset[1] * sin_diff
+                        rotated_offset_y = stress_offset[0] * sin_diff + stress_offset[1] * cos_diff
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Nx')] = corrected_point[0] + rotated_offset_x
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Ny')] = corrected_point[1] + rotated_offset_y
                     
                     if 'Qx' in df_adjusted.columns:
                         # せん断力図の座標調整
                         stress_offset = np.array([combined_df.iloc[j]['Qx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['Qy'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qy')] = corrected_point[1] + stress_offset[1]
+                        # オフセットを回転
+                        rotated_offset_x = stress_offset[0] * cos_diff - stress_offset[1] * sin_diff
+                        rotated_offset_y = stress_offset[0] * sin_diff + stress_offset[1] * cos_diff
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qx')] = corrected_point[0] + rotated_offset_x
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Qy')] = corrected_point[1] + rotated_offset_y
                     
                     if 'Mx' in df_adjusted.columns:
                         # 曲げモーメント図の座標調整
                         stress_offset = np.array([combined_df.iloc[j]['Mx'] - combined_df.iloc[j]['x'], combined_df.iloc[j]['My'] - combined_df.iloc[j]['y']])
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Mx')] = corrected_point[0] + stress_offset[0]
-                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('My')] = corrected_point[1] + stress_offset[1]
+                        # オフセットを回転
+                        rotated_offset_x = stress_offset[0] * cos_diff - stress_offset[1] * sin_diff
+                        rotated_offset_y = stress_offset[0] * sin_diff + stress_offset[1] * cos_diff
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('Mx')] = corrected_point[0] + rotated_offset_x
+                        df_adjusted.iloc[j, df_adjusted.columns.get_loc('My')] = corrected_point[1] + rotated_offset_y
                     
                     # 変形図の座標も調整
                     if 'ax' in df_adjusted.columns:
