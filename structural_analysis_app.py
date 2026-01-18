@@ -1942,7 +1942,8 @@ for l in load_connections:
     
     # 等分布荷重の場合は複数の矢印を描画
     if l.get("is_udl", False) and "udl_arrow_positions" in l:
-        # 複数の矢印を描画
+        # 複数の矢印を描画し、始点を記録
+        arrow_start_points = []
         for pos in l["udl_arrow_positions"]:
             pos_array = np.array(pos)
             
@@ -1958,6 +1959,14 @@ for l in load_connections:
             
             # 矢印を描画（黒色）
             cv2.arrowedLine(cleaned, start_pt, end_pt, (0, 0, 0), 8, tipLength=0.3)
+            
+            # 始点を記録
+            arrow_start_points.append(start_pt)
+        
+        # 矢印の始点（矢じりの反対側）を一本の線でつなぐ
+        if len(arrow_start_points) >= 2:
+            for i in range(len(arrow_start_points) - 1):
+                cv2.line(cleaned, arrow_start_points[i], arrow_start_points[i + 1], (0, 0, 0), 8)
     else:
         # 集中荷重の場合
         # 角度から矢印の始点を計算
