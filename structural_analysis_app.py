@@ -2466,31 +2466,8 @@ try:
     st.subheader("📊 解析結果")
     
     # 解析結果全体を薄い青色の背景で囲む
-    st.markdown("""
-    <style>
-    /* 解析結果セクション全体の背景色 */
-    [data-testid="stVerticalBlock"] > [style*="flex-direction: column"] > [data-testid="stVerticalBlock"] {
-        background-color: lightblue !important;
-        padding: 20px !important;
-        border-radius: 10px !important;
-    }
-    /* テキスト要素の背景も薄い青に */
-    .stMarkdown {
-        background-color: transparent !important;
-    }
-    /* pyplot図の背景 */
-    .stPlotlyChart, .element-container {
-        background-color: transparent !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # コンテナで囲んで背景色を確実に適用
-    with st.container():
-        st.markdown('<div style="background-color: lightblue; padding: 20px; border-radius: 10px;">', unsafe_allow_html=True)
-        
-        # 変形図の表示
-        st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>【変形図】</strong></div>', unsafe_allow_html=True)
+    # 変形図の表示
+    st.markdown('**【変形図】**')
     
     # draw_lib.make_figureを使用して変形図を作成
     fig_list_deform = draw_lib.make_figure(M_S)
@@ -2574,7 +2551,7 @@ try:
     st.pyplot(fig)
     
     # 応力図の表示
-    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>【応力図】</strong></div>', unsafe_allow_html=True)
+    st.markdown('**【応力図】**')
     
     # 応力図用のデータを作成（スケール調整なし）
     fig_list_original = draw_lib.make_figure(M_S)
@@ -2614,14 +2591,9 @@ try:
         fig_list.append(df_scaled)
     
     # 軸力図(N)
-    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>軸力図 (N)</strong></div>', unsafe_allow_html=True)
+    st.markdown('**軸力図 (N)**')
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
-    
-    # 背景を薄い青に設定（図全体）
-    fig.patch.set_facecolor('lightblue')
-    # プロット領域を白に設定
-    ax.set_facecolor('white')
     
     # 部材を15度刻みで表示
     for conn in beam_connections:
@@ -2657,14 +2629,9 @@ try:
     st.pyplot(fig)
     
     # せん断力図(Q)
-    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>せん断力図 (Q)</strong></div>', unsafe_allow_html=True)
+    st.markdown('**せん断力図 (Q)**')
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
-    
-    # 背景を薄い青に設定（図全体）
-    fig.patch.set_facecolor('lightblue')
-    # プロット領域を白に設定
-    ax.set_facecolor('white')
     
     # 部材を15度刻みで表示
     for conn in beam_connections:
@@ -2700,14 +2667,9 @@ try:
     st.pyplot(fig)
     
     # 曲げモーメント図(M)
-    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>曲げモーメント図 (M)</strong></div>', unsafe_allow_html=True)
+    st.markdown('**曲げモーメント図 (M)**')
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.set_aspect('equal')
-    
-    # 背景を薄い青に設定（図全体）
-    fig.patch.set_facecolor('lightblue')
-    # プロット領域を白に設定
-    ax.set_facecolor('white')
     
     # 部材を15度刻みで表示
     for conn in beam_connections:
@@ -2743,11 +2705,8 @@ try:
     st.pyplot(fig)
     
     # 変位・反力の表示
-    st.markdown('<div style="background-color: lightblue; padding: 10px;"><strong>節点変位・反力</strong></div>', unsafe_allow_html=True)
+    st.markdown('**節点変位・反力**')
     st.dataframe(D_R, use_container_width=True)
-    
-    # 背景色のdivを閉じる
-    st.markdown('</div>', unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"❌ 解析エラー: {str(e)}")
