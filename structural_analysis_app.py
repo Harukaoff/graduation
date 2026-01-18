@@ -1112,6 +1112,73 @@ for support_idx in support_node_indices:
 if beams_to_remove:
     beam_connections = [beam for i, beam in enumerate(beam_connections) if i not in beams_to_remove]
 
+# ===== 近接する梁の端点を接続 =====
+# 異なる梁の端点が近い場合、同じ節点を共有するように統合
+endpoint_merge_threshold = 50  # 50ピクセル以内なら接続
+
+# 全ての梁の端点を収集
+beam_endpoints_list = []
+for i, beam in enumerate(beam_connections):
+    beam_endpoints_list.append({
+        "beam_idx": i,
+        "is_start": True,
+        "node_idx": beam["node1_idx"],
+        "coord": np.array(beam["node1_coord"])
+    })
+    beam_endpoints_list.append({
+        "beam_idx": i,
+        "is_start": False,
+        "node_idx": beam["node2_idx"],
+        "coord": np.array(beam["node2_coord"])
+    })
+
+# 近接する端点をグループ化
+endpoint_groups = []
+used_endpoints = set()
+
+for i, ep1 in enumerate(beam_endpoints_list):
+    if i in used_endpoints:
+        continue
+    
+    group = [i]
+    used_endpoints.add(i)
+    
+    for j, ep2 in enumerate(beam_endpoints_list):
+        if j <= i or j in used_endpoints:
+            continue
+        
+        # 異なる梁の端点で、距離が閾値以内なら同じグループに追加
+        if ep1["beam_idx"] != ep2["beam_idx"]:
+            dist = np.linalg.norm(ep1["coord"] - ep2["coord"])
+            if dist < endpoint_merge_threshold:
+                group.append(j)
+                used_endpoints.add(j)
+    
+    if len(group) > 1:
+        endpoint_groups.append(group)
+
+# 各グループの端点を統合（平均座標を使用）
+for group in endpoint_groups:
+    # グループ内の全端点の平均座標を計算
+    coords = [beam_endpoints_list[idx]["coord"] for idx in group]
+    avg_coord = np.mean(coords, axis=0)
+    
+    # グループ内の全端点を平均座標に更新
+    for idx in group:
+        ep = beam_endpoints_list[idx]
+        beam_idx = ep["beam_idx"]
+        is_start = ep["is_start"]
+        
+        # beam_connectionsの座標を更新
+        if is_start:
+            beam_connections[beam_idx]["node1_coord"] = avg_coord.tolist()
+        else:
+            beam_connections[beam_idx]["node2_coord"] = avg_coord.tolist()
+        
+        # all_nodesの座標も更新
+        node_idx = ep["node_idx"]
+        all_nodes[node_idx] = avg_coord.tolist()
+
 # ===== 梁のクロス検出と削除 =====
 # 梁同士が交差している場合、片方を削除
 def segments_intersect(p1, p2, p3, p4):
