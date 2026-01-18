@@ -1489,22 +1489,22 @@ for l in loads:
         if closest_beam_center is not None:
             # バウンディングボックスから梁への方向ベクトル
             to_beam = closest_beam_center - bbox_center
-            to_beam_angle = math.degrees(math.atan2(to_beam[1], to_beam[0]))
-            if to_beam_angle < 0:
-                to_beam_angle += 360
+            to_beam_normalized = to_beam / np.linalg.norm(to_beam)
             
-            # 2つの角度候補のうち、梁に向かう方向に近い方を選択
-            diff1 = abs(angle_candidate1 - to_beam_angle)
-            diff2 = abs(angle_candidate2 - to_beam_angle)
+            # 2つの角度候補それぞれの方向ベクトルを計算
+            angle1_rad = np.deg2rad(angle_candidate1)
+            dir1 = np.array([np.cos(angle1_rad), np.sin(angle1_rad)])
             
-            # 角度差を0-180度の範囲に正規化
-            if diff1 > 180:
-                diff1 = 360 - diff1
-            if diff2 > 180:
-                diff2 = 360 - diff2
+            angle2_rad = np.deg2rad(angle_candidate2)
+            dir2 = np.array([np.cos(angle2_rad), np.sin(angle2_rad)])
             
-            # より近い角度を選択
-            if diff1 < diff2:
+            # 内積を使って、どちらが梁に向かっているかを判定
+            # 内積が大きい方が、梁への方向に近い
+            dot1 = np.dot(dir1, to_beam_normalized)
+            dot2 = np.dot(dir2, to_beam_normalized)
+            
+            # より内積が大きい方（梁に向かっている方）を選択
+            if dot1 > dot2:
                 angle = angle_candidate1
             else:
                 angle = angle_candidate2
