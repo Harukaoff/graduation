@@ -1132,7 +1132,7 @@ for i, beam in enumerate(beam_connections):
         "coord": np.array(beam["node2_coord"])
     })
 
-# 近接する端点をグループ化
+# 近接する端点をグループ化（端点同士の接続）
 endpoint_groups = []
 used_endpoints = set()
 
@@ -1178,6 +1178,124 @@ for group in endpoint_groups:
         # all_nodesの座標も更新
         node_idx = ep["node_idx"]
         all_nodes[node_idx] = avg_coord.tolist()
+
+# ===== 梁の端点が他の梁の線分に近い場合も接続 =====
+# 梁の端点が他の梁の途中に近い場合、その梁を分割して接続
+beams_to_split_for_connection = []
+
+for i, ep in enumerate(beam_endpoints_list):
+    ep_coord = ep["coord"]
+    ep_beam_idx = ep["beam_idx"]
+    
+    # 他の梁との距離をチェック
+    for j, beam in enumerate(beam_connections):
+        if j == ep_beam_idx:
+            continue
+        
+        beam_a = np.array(beam["node1_coord"])
+        beam_b = np.array(beam["node2_coord"])
+        
+        # 端点から梁への垂線の足を計算
+        beam_vec = beam_b - beam_a
+        beam_length = np.linalg.norm(beam_vec)
+        if beam_length < 1e-6:
+            continue
+        
+        beam_unit = beam_vec / beam_length
+        
+        # 端点から梁の始点へのベクトル
+        to_ep = ep_coord - beam_a
+        
+        # 梁上での投影位置（0-1の範囲）
+        t = np.dot(to_ep, beam_unit) / beam_length
+        
+        # 投影点が梁の範囲内にある場合のみ処理
+        if 0.1 < t < 0.9:  # 端点付近は除外（既に端点同士の接続で処理済み）
+            # 投影点の座標
+            proj_point = beam_a + t * beam_vec
+            
+            # 端点から投影点までの距離
+            dist = np.linalg.norm(ep_coord - proj_point)
+            
+            # 距離が閾値以内なら分割対象に追加
+            if dist < endpoint_merge_threshold:
+                # この梁を分割して端点を接続
+                beams_to_split_for_connection.append({
+                    "beam_idx": j,
+                    "split_t": t,
+                    "split_coord": proj_point,
+                    "connect_to_ep": i
+                })
+
+# 梁を分割して接続
+if beams_to_split_for_connection:
+    # beam_idxでソート（逆順）して、インデックスのずれを防ぐ
+    beams_to_split_for_connection.sort(key=lambda x: x["beam_idx"], reverse=True)
+    
+    new_beam_connections = []
+    for i, beam in enumerate(beam_connections):
+        # この梁が分割対象か確認
+        splits_for_this_beam = [s for s in beams_to_split_for_connection if s["beam_idx"] == i]
+        
+        if splits_for_this_beam:
+            # t値でソート
+            splits_for_this_beam.sort(key=lambda x: x["split_t"])
+            
+            # 分割点を追加
+            current_start_idx = beam["node1_idx"]
+            current_start_coord = beam["node1_coord"]
+            
+            for split in splits_for_this_beam:
+                # 分割点の節点を追加
+                split_node_idx = len(all_nodes)
+                split_coord = split["split_coord"]
+                all_nodes.append(split_coord.tolist())
+                node_info.append({"type": "beam_connection_point"})
+                
+                # 接続する端点の座標を分割点に更新
+                ep_idx = split["connect_to_ep"]
+                ep = beam_endpoints_list[ep_idx]
+                if ep["is_start"]:
+                    beam_connections[ep["beam_idx"]]["node1_coord"] = split_coord.tolist()
+                else:
+                    beam_connections[ep["beam_idx"]]["node2_coord"] = split_coord.tolist()
+                all_nodes[ep["node_idx"]] = split_coord.tolist()
+                
+                # 始点から分割点までの梁を追加
+                new_beam_connections.append({
+                    "beam_idx": beam["beam_idx"],
+                    "node1_idx": current_start_idx,
+                    "node2_idx": split_node_idx,
+                    "node1_coord": current_start_coord,
+                    "node2_coord": split_coord.tolist(),
+                    "angle": beam["angle"],
+                    "original_angle": beam.get("original_angle", beam["angle"]),
+                    "conf": beam["conf"],
+                    "is_perpendicular": beam.get("is_perpendicular", False)
+                })
+                
+                # 次の区間の始点を更新
+                current_start_idx = split_node_idx
+                current_start_coord = split_coord.tolist()
+            
+            # 最後の分割点から終点までの梁を追加
+            new_beam_connections.append({
+                "beam_idx": beam["beam_idx"],
+                "node1_idx": current_start_idx,
+                "node2_idx": beam["node2_idx"],
+                "node1_coord": current_start_coord,
+                "node2_coord": beam["node2_coord"],
+                "angle": beam["angle"],
+                "original_angle": beam.get("original_angle", beam["angle"]),
+                "conf": beam["conf"],
+                "is_perpendicular": beam.get("is_perpendicular", False)
+            })
+        else:
+            # 分割しない梁はそのまま追加
+            new_beam_connections.append(beam)
+    
+    # 梁のリストを更新
+    beam_connections = new_beam_connections
 
 # ===== 梁のクロス検出と削除 =====
 # 梁同士が交差している場合、片方を削除
