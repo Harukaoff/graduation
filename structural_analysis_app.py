@@ -2074,8 +2074,8 @@ for i, s in enumerate(supports):
         # ピン支点とピンローラー支点は常に0度（角度固定）
         angle = 0
     elif name == "fixed":
-        # 固定支点は90度回転
-        angle = original_angle + 90
+        # 固定支点は180度回転（90度 + さらに90度反時計回り）
+        angle = original_angle + 180
     else:
         # その他（ヒンジなど）は元の角度
         angle = original_angle
