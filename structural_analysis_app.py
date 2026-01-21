@@ -2106,27 +2106,6 @@ for i, s in enumerate(supports):
             center = s["node"]
             cleaned = overlay_rgba(cleaned, tpl_rot, center)
 
-# すべての節点を描画
-for i, node in enumerate(all_nodes):
-    node_coord = node if isinstance(node, np.ndarray) else np.array(node)
-    info = node_info[i] if i < len(node_info) else {"type": "unknown"}
-    
-    if info["type"] == "support":
-        # 支点節点（濃い赤）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 15, (0, 0, 200), 5)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 18, int(node_coord[1]) - 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 200), 3)
-    elif info["type"] == "beam_endpoint":
-        # 梁端点（濃い青）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 12, (200, 0, 0), 4)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 15, int(node_coord[1]) - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 0, 0), 3)
-    elif info["type"] == "load_point":
-        # 荷重作用点（濃い緑）
-        cv2.circle(cleaned, tuple(map(int, node_coord)), 12, (0, 150, 0), 4)
-        cv2.putText(cleaned, f"N{i}", (int(node_coord[0]) + 15, int(node_coord[1]) - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 150, 0), 3)
-
 # 荷重を描画（集中荷重・等分布荷重は直接描画、モーメント荷重はテンプレート使用）
 for l in load_connections:
     name = l["type"]
@@ -3068,55 +3047,4 @@ with tab3:
         else:
             st.info("荷重が設定されていません")
 
-# デバッグ情報（展開可能）
-with st.expander("🔍 検出詳細情報"):
-    st.write(f"**使用された設定**")
-    mode_text = "自動調整" if auto_conf else "手動設定"
-    st.write(f"- 検出信頼度: {conf_th:.2f} ({mode_text})")
-    st.write(f"- 前処理: ノイズ除去適用")
-    st.write(f"- 画像サイズ: {img_width}x{img_height}px")
-    
-    st.write(f"\n**検出された要素**")
-    st.write(f"- 支点: {len(supports)}個")
-    st.write(f"- 梁: {len(beams)}個")
-    st.write(f"- 荷重: {len(loads)}個")
-    st.write(f"- 総節点数: {len(all_nodes)}個")
-    
-    st.write(f"\n**梁の接続状況**")
-    for i, conn in enumerate(beam_connections):
-        angle_diff = abs(conn['angle'] - conn.get('original_angle', conn['angle']))
-        angle_info = f" [角度補正: {conn.get('original_angle', 0):.1f}° → {conn['angle']:.1f}°]" if angle_diff > 0.1 else ""
-        split_info = " [分割済み]" if conn.get('is_split', False) else ""
-        st.write(f"梁{i} (元{conn['beam_idx']}): N{conn['node1_idx']} → N{conn['node2_idx']} "
-                f"(スナップ距離: {conn['snap1_dist']:.1f}px, {conn['snap2_dist']:.1f}px){angle_info}{split_info}")
-    
-    st.write(f"\n**荷重の接続状況**")
-    for l in load_connections:
-        if l.get('is_udl', False):
-            # 等分布荷重
-            direction = l.get('direction', [0, 0])
-            dir_str = f"方向: ({direction[0]:.1f}, {direction[1]:.1f})"
-            beam_angle = l.get('closest_beam_angle', 'N/A')
-            num_arrows = len(l.get('udl_arrow_positions', []))
-            st.write(f"{l['type']}: 矢印数={num_arrows}, 角度: {l['angle']:.0f}°, 梁角度: {beam_angle}°, {dir_str}")
-        else:
-            # 集中荷重・モーメント荷重
-            split_info = " [梁を分割]" if l.get('needs_split', False) else ""
-            direction = l.get('direction', [0, 0])
-            dir_str = f", 方向: ({direction[0]:.1f}, {direction[1]:.1f})"
-            st.write(f"{l['type']}: 節点N{l['node_idx']} (梁{l['on_beam']}, t={l['beam_t']:.2f}, 距離: {l['dist_to_beam']:.1f}px, 角度: {l['angle']:.0f}°{dir_str}){split_info}")
-    
-    if udl_on_beams:
-        st.write(f"\n**等分布荷重が作用する梁**")
-        for udl in udl_on_beams:
-            beam_idx = udl["beam_idx"]
-            load_val = udl["load_value"] * pattern_udl_multiplier
-            direction = udl["direction"]
-            t_start = udl.get("t_start", 0)
-            t_end = udl.get("t_end", 1)
-            st.write(f"梁{beam_idx}: 荷重値={load_val:.1f}, 方向=({direction[0]:.1f}, {direction[1]:.1f}), 範囲=t[{t_start:.2f}, {t_end:.2f}]")
-    
-    st.write(f"\n**節点一覧**")
-    for i, (node, info) in enumerate(zip(all_nodes, node_info)):
-        node_coord = node if isinstance(node, np.ndarray) else np.array(node)
-        st.write(f"N{i}: ({node_coord[0]:.1f}, {node_coord[1]:.1f}) - {info['type']}")
+
